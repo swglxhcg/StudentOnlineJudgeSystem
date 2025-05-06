@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-md5@0.8.3/src/md5.min.js"></script>
+    <script src="https://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script>
+    <style>
+        .user-table {
+            margin-top: 20px;
+        }
+        .action-btn {
+            margin-right: 5px;
+        }
+    </style>
+    <script>
+        // 页面加载时检查JWT token
+        window.onload = function() {
+            const token = localStorage.getItem('jwt_token');
+            if (!token) {
+                alert('请先登录');
+                window.location.href = '/login.html';
+            } else {
+                loadUsers();
+            }
+        };
+
+        // 加载用户列表
+        function loadUsers() {
+            $.ajax({
+                url: '/users',
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify({
+                    request_type: 'get_all',
+                    request_data: ''
+                }),
+                success: function(data) {
+                    if (data.status === 200) {
+                        renderUsers(data.data);
+                    } else {
+                        alert(data.message);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error:', error);
+                }
+            });
+        }
+
+        // 渲染用户表格
+        function renderUsers(users) {
+            const tableBody = document.getElementById('userTableBody');
+            tableBody.innerHTML = '';
+
+            users.forEach(user => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${user.id}</td>
+                    <td>${user.username}</td>
+                    <td>${user.user_type === 'admin' ? '管理员' : '教师'}</td>
+                    <td>
+                        <a href="/admin_pages/edit_user.html?id=${user.id}&username=${user.username}&userType=${user.user_type}" class="btn btn-primary btn-sm action-btn">编辑</a>
+                        <button class="btn btn-danger btn-sm action-btn" onclick="confirmDelete(${user.id})">删除</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // 添加用户
+        function addUser() {
+            const username = document.getElementById('addUsername').value;
+            const password = document.getElementById('addPassword').value;
+            const userType = document.getElementById('addUserType').value;
+            const passwordMd5 = md5(password);
+
+            $.ajax({
+                url: '/users',
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify({
+                    request_type: 'add',
+                    request_data: {
+                        username: username,
+                        password_md5: passwordMd5,
+                        user_type: parseInt(userType)
+                    }
+                }),
+                success: function(data) {
+                    alert(data.message);
+                    if (data.status === 200) {
+                        loadUsers();
+                        $('#addUserModal').modal('hide');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error:', error);
+                }
+            });
+        }
+
+        // 显示编辑模态框
+        function showEditModal(id, username, userType) {
+            document.getElementById('editUserId').value = id;
+            document.getElementById('editUsername').value = username;
+            document.getElementById('editUserType').value = userType === 'admin' ? '2' : '1';
+            $('#editUserModal').modal('show');
+        }
+
+        // 更新用户
+        function updateUser() {
+            const id = document.getElementById('editUserId').value;
+            const password = document.getElementById('editPassword').value;
+            const userType = document.getElementById('editUserType').value;
+            const passwordMd5 = md5(password);
+
+            $.ajax({
+                url: '/users',
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify({
+                    request_type: 'update',
+                    request_data: {
+                        user_id: id,
+                        password_md5: passwordMd5,
+                        user_type: parseInt(userType)
+                    }
+                }),
+                success: function(data) {
+                    alert(data.message);
+                    if (data.status === 200) {
+                        loadUsers();
+                        $('#editUserModal').modal('hide');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error:', error);
+                }
+            });
+        }
+
+        // 确认删除
+        function confirmDelete(id) {
+            if (confirm('确定要删除这个用户吗？')) {
+                deleteUser(id);
+            }
+        }
+
+        // 删除用户
+        function deleteUser(id) {
+            $.ajax({
+                url: '/users',
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify({
+                    request_type: 'delete',
+                    request_data: {
+                        user_id: id
+                    }
+                }),
+                success: function(data) {
+                    alert(data.message);
+                    if (data.status === 200) {
+                        loadUsers();
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error:', error);
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h2>用户管理</h2>
+        <a href="/admin_pages/add_user.html" class="btn btn-success">添加用户</a>
+        
+        <table class="table table-striped user-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>用户类型</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="userTableBody">
+                <!-- 用户数据将通过JS动态加载 -->
+            </tbody>
+        </table>
+    </div>
+
+
+</body>
+</html>

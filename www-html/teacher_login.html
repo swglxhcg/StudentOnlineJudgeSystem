@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教师登录</title>
+    <!-- 引入Bootstrap CSS -->
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入jQuery -->
+    <script src="https://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script>
+    <!-- 引入MD5库 -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/blueimp-md5/2.19.0/js/md5.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .login-box {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        .form-control {
+            margin-bottom: 20px;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        .form-control:focus {
+            border-color: #66afe9;
+            box-shadow: 0 0 8px rgba(102,175,233,0.6);
+        }
+        .btn-login {
+            width: 100%;
+            padding: 12px;
+            font-size: 18px;
+            border-radius: 5px;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h2 class="text-center mb-4">教师登录</h2>
+        <form id="login-form">
+            <div class="form-group">
+                <input type="text" class="form-control" id="username" placeholder="账号">
+            </div>
+            <div class="form-group">
+                <input type="password" class="form-control" id="password" placeholder="密码">
+            </div>
+            <button type="submit" class="btn btn-primary btn-login">登录</button>
+            <a href="index.html" class="back-link">返回首页</a>
+        </form>
+    </div>
+
+    <!-- 引入Bootstrap JS和Popper.js -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+    <script>
+        // API地址前缀配置
+        // var API_BASE_URL = 'http://localhost:5000';
+        // var API_BASE_URL = 'http://127.0.0.1:5000';
+        var API_BASE_URL = '';
+    
+        $(document).ready(function() {
+            // 检查是否已登录
+            if (localStorage.getItem('jwt_token')) {
+                // 根据用户类型跳转到不同页面
+                var userType = localStorage.getItem('user_type');
+                var token = localStorage.getItem('jwt_token');
+                if (userType === 'admin') {
+                    window.location.href = '/dashboard?token=' + encodeURIComponent(token);
+                } else {
+                    window.location.href = '/dashboard?token=' + encodeURIComponent(token);
+                }
+                return;
+            }
+            
+            
+            // 表单提交事件
+            $('#login-form').submit(function(e) {
+                e.preventDefault();
+                
+                // 获取输入值
+                var username = $('#username').val().trim();
+                var password = $('#password').val().trim();
+                
+                // 表单验证
+                if (!username) {
+                    alert('请输入账号');
+                    return;
+                }
+                
+                if (!password) {
+                    alert('请输入密码');
+                    return;
+                }
+                
+                if (password.length < 6) {
+                    alert('密码长度不能少于6位');
+                    return;
+                }
+                
+                // 对密码进行MD5加密
+                var password_md5 = md5(password);
+                
+                // AJAX调用登录接口
+                // 修改后的登录逻辑代码片段
+                $.ajax({
+                    url: API_BASE_URL + '/login',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        username: username,
+                        password_md5: md5(password)
+                    }),
+                    success: function(response) {
+                        if (response.status === 200) {
+                            // 存储JWT令牌到localStorage
+                            localStorage.setItem('jwt_token', response.message.token);
+                            localStorage.setItem('user_id', response.message.user_id);
+                            localStorage.setItem('user_type', response.message.user_type);
+                            
+                            // 根据用户类型跳转到不同仪表盘
+                            if (response.message.user_type === 'admin') {
+                                window.location.href = '/dashboard?token=' + encodeURIComponent(response.message.token);
+                            } else {
+                                window.location.href = '/dashboard?token=' + encodeURIComponent(response.message.token);
+                            }
+                        } else {
+                            alert(response.message);
+                        }
+                    },
+                    error: function(xhr) {
+                        alert('登录失败: ' + xhr.responseJSON?.message || '服务器错误');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统设置</title>
+    <script>
+        // 页面加载时检查JWT token
+        window.onload = function() {
+            const token = localStorage.getItem('jwt_token');
+            if (!token) {
+                alert('请先登录');
+                window.location.href = '/login.html';
+            }
+        };
+    </script>
+</head>
+<body>
+    <h2>系统设置</h2>
+    <p>这里是系统设置页面内容</p>
+</body>
+</html>
