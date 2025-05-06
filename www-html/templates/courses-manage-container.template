@@ -1,0 +1,328 @@
+<script>
+    let currentEditingCourseId = null;
+    
+    // 当页面加载完成后执行
+    document.addEventListener('DOMContentLoaded', function() {
+        // 检查是否已登录
+        if (!localStorage.getItem('jwt_token')) {
+            // 如果未登录，跳转到登录页面
+            window.location.href = '/login';
+        }
+        // 加载课程列表
+        loadCourses();
+    })
+
+    // 加载课程列表
+    function loadCourses() {
+        // 获取JWT token
+        const token = localStorage.getItem('jwt_token');
+        if (!token) {
+            window.location.href = '/login';
+            return;
+        }
+        
+        // 调用后端API获取课程列表
+        fetch('/courses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                request_type: 'get_all'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 200) {
+                console.log(data.data); // 打印课程列表数据，用于调试
+                // 渲染课程列表
+                renderCourses(data.data);
+            } else {
+                alert(`获取课程列表失败: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('获取课程列表出错:', error);
+            alert('获取课程列表时发生错误');
+        });
+    }
+
+    // 渲染课程列表
+    function renderCourses(courses) {
+        const container = document.getElementById('courseTableBody');
+        if (!container) return;
+        
+        // 清空现有内容
+        container.innerHTML = '';
+        
+        // 遍历课程数据并生成表格行
+        courses.forEach(course => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${course.id}</td>
+                <td>${course.course_name}</td>
+                <td>${course.task_count || 0}</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="showEditCourseForm('${course.id}')">编辑</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteCourse('${course.id}')">删除</button>
+                </td>
+            `;
+            container.appendChild(row);
+        });
+    }
+
+    // 显示添加课程表单
+    function showAddCourseForm() {
+        document.getElementById('courseManagementSection').style.display = 'none';
+        document.getElementById('addCourseSection').style.display = 'block';
+        document.getElementById('editCourseSection').style.display = 'none';
+        document.getElementById('courseName').value = '';
+        // 隐藏添加课程按钮
+        document.getElementById('addCourseBtn').style.display = 'none';
+    }
+
+    // 隐藏添加课程表单
+    function hideAddCourseForm() {
+        document.getElementById('courseManagementSection').style.display = 'block';
+        document.getElementById('addCourseSection').style.display = 'none';
+        // 显示添加课程按钮
+        document.getElementById('addCourseBtn').style.display = 'block';
+    }
+
+    // 添加新课程
+    function addCourse() {
+        const courseName = document.getElementById('courseName').value.trim();
+        
+        if (!courseName) {
+            alert('请输入课程名称');
+            return;
+        }
+        
+        // 调用后端API添加课程
+        fetch('/courses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+            },
+            body: JSON.stringify({
+                request_type: 'add',
+                request_data: {
+                    course_name: courseName
+                }
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 200) {
+                alert('课程添加成功');
+                // 刷新课程列表
+                loadCourses();
+            } else {
+                alert(`添加课程失败: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('添加课程出错:', error);
+            alert('添加课程时发生错误');
+        })
+        .finally(() => {
+            // 隐藏添加课程表单
+            hideAddCourseForm();
+            // 刷新课程列表
+            loadCourses();
+            // 重置表单
+            document.getElementById('courseName').value = '';
+        });
+    }
+
+    // 显示编辑课程表单
+    function showEditCourseForm(courseId) {
+        currentEditingCourseId = courseId; // 存储当前编辑的课程ID
+        document.getElementById('courseManagementSection').style.display = 'none';
+        document.getElementById('addCourseSection').style.display = 'none';
+        document.getElementById('editCourseSection').style.display = 'block';
+        // 隐藏添加课程按钮
+        document.getElementById('addCourseBtn').style.display = 'none';
+
+        // 清空输入框
+        document.getElementById('editCourseName').value = '';
+        
+        // 调用API获取课程详细信息
+        fetch('/courses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+            },
+            body: JSON.stringify({
+                request_type: 'get',
+                request_data: {
+                    course_id: courseId
+                }
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 200) {
+                const course = data.data.course;
+                document.getElementById('editCourseName').value = course.course_name;
+            } else {
+                alert(`获取课程信息失败: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('获取课程信息出错:', error);
+            alert('获取课程信息时发生错误');
+        });
+    }
+
+    // 隐藏编辑课程表单
+    function hideEditCourseForm() {
+        currentEditingCourseId = null; // 清空当前编辑的课程ID
+        document.getElementById('courseManagementSection').style.display = 'block';
+        document.getElementById('editCourseSection').style.display = 'none';
+        // 显示添加课程按钮
+        document.getElementById('addCourseBtn').style.display = 'block';
+    }
+
+    // 更新课程信息
+    function updateCourse() {
+        const courseName = document.getElementById('editCourseName').value.trim();
+        
+        if (!courseName) {
+            alert('请输入课程名称');
+            return;
+        }
+        
+        // 调用API更新课程
+        fetch('/courses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+            },
+            body: JSON.stringify({
+                request_type: 'update',
+                request_data: {
+                    course_id: currentEditingCourseId,
+                    course_name: courseName
+                }
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 200) {
+                alert('课程更新成功');
+                hideEditCourseForm();
+                // 刷新课程列表
+                loadCourses();
+            } else {
+                alert(`更新课程失败: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('更新课程出错:', error);
+            alert('更新课程时发生错误');
+        });
+    }
+
+    // 删除课程
+    function deleteCourse(courseId) {
+        if (confirm('确定要删除这个课程吗？')) {
+            fetch('/courses', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+                },
+                body: JSON.stringify({
+                    request_type: 'delete',
+                    request_data: {
+                        course_id: courseId
+                    }
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 200) {
+                    alert('课程删除成功');
+                    // 刷新课程列表
+                    loadCourses();
+                } else {
+                    alert(`删除课程失败: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error('删除课程出错:', error);
+                alert('删除课程时发生错误');
+            })
+            .finally(() => {
+                // 刷新课程列表
+                loadCourses();
+            });
+        }
+    }
+</script>
+<style>
+    .container-title{
+        margin-top: 1%;
+        margin-bottom: 2%;
+    }
+    .container-textbox{
+        margin-bottom: 3%;
+    }
+</style>
+<div class="courses-container">
+    <div class="row mb-4" style="padding-bottom: 2%">
+        <div class="col-md-6">
+            <h2>课程管理</h2>
+        </div>
+        <div class="col-md-6 text-end">
+            <button class="btn btn-primary" id="addCourseBtn" onclick="showAddCourseForm()">添加课程</button>
+        </div>
+    </div>
+    
+    <div id="courseManagementSection">
+        <table class="table table-striped course-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>课程名称</th>
+                    <th>任务点数量</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="courseTableBody"></tbody>
+        </table>
+    </div>
+    
+    <div id="addCourseSection" style="display:none;">
+        <div class="form-container card shadow p-4 mb-5 bg-body rounded" style="max-width: 600px; margin: 0 auto;">
+            <h2 class="text-center mb-4 container-title">添加课程</h2>
+            <div class="mb-3 container-textbox">
+                <label for="courseName" class="form-label">课程名称</label>
+                <input type="text" class="form-control" id="courseName" required>
+            </div>
+            <div class="text-center">
+                <button type="button" class="btn btn-secondary me-2" id="cancelAddCourseBtn" onclick="hideAddCourseForm()">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmAddCourseBtn" onclick="addCourse()">确认</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="editCourseSection" style="display:none;">
+        <div class="form-container card shadow p-4 mb-5 bg-body rounded" style="max-width: 600px; margin: 0 auto;">
+            <h2 class="text-center mb-4 container-title">编辑课程</h2>
+            <div class="mb-3 container-textbox">
+                <label for="editCourseName" class="form-label">课程名称</label>
+                <input type="text" class="form-control" id="editCourseName" required>
+            </div>
+            <div class="text-center">
+                <button type="button" class="btn btn-secondary me-2" id="cancelEditCourseBtn" onclick="hideEditCourseForm()">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmEditCourseBtn" onclick="updateCourse()">确认</button>
+            </div>
+        </div>
+    </div>
+</div>

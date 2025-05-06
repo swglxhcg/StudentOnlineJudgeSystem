@@ -13,11 +13,9 @@ from flask_jwt_extended import decode_token
 logger = RichCtLogger('ojs_app')
 
 app = Flask(__name__, static_folder='www-html')
-# 配置日志级别
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 app.config['JWT_SECRET_KEY'] = 'chzt'  # 生产环境请使用更安全的密钥
-# app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
 app.config['JWT_ALGORITHM'] = 'HS256'
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=2)
 jwt = JWTManager(app)
@@ -91,6 +89,7 @@ def dashboard():
     current_user = decoded_token['sub']
     current_user = json.loads(current_user)
     if current_user.get('type') == 'admin':
+        admin_dashboard_html_path = 'www-html/admin_dashboard.html'
         # 获取url中的参数，判断仪表盘的页面
         response_html_code = ""
         # 判断url是否有参数page
@@ -128,7 +127,7 @@ def dashboard():
         try:
             with open(template_mapping[page]['template_file'], 'r', encoding='utf-8') as f:
                 template = f.read()
-            with open('www-html/admin_dashboard.html', 'r', encoding='utf-8') as f:
+            with open(admin_dashboard_html_path, 'r', encoding='utf-8') as f:
                 response_html_code = f.read()
             
             # 替换占位符
@@ -140,14 +139,72 @@ def dashboard():
         except Exception as e:
             logger.error(f"加载模板失败: {str(e)}")
             return jsonify({'status': 500,'message': '加载模板失败'}), 500
+
     elif current_user.get('type') == 'teacher':
-        logger.info(f"用户 {current_user.get('id')} (ID: {current_user.get('id')}) 已登录")
+        template_mapping = {
+            'groups_manage': {
+                'show': True,
+                'show_text': '群组管理',
+                'template_file': 'www-html/templates/groups-manage-container.template',
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
+            },
+            'courses_manage': {
+                'show': True,
+                'show_text': '课程管理',
+                'template_file': 'www-html/templates/courses-manage-container.template',
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
+            },
+            'submissions_manage': {
+                'show': False,
+                'show_text': '',
+                'template_file': 'www-html/templates/submissions-manage-container.template',
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
+            },
+        }
+        teacher_dashboard_html_path = 'www-html/teacher_dashboard.html'
+        html_code_menu_items = ""
+        for i in template_mapping:
+            if not template_mapping[i]['show']:
+                continue
+            html_code_menu_items += f"""<li><a href="#" data-page="{i}">{template_mapping[i]['show_text']}</a></li>"""
+        # 获取url中的参数，判断仪表盘的页面
+        response_html_code = ""
+        # 判断url是否有参数page
+        page = ""
+        if not request.args.get('page'):
+            logger.warning("仪表盘请求: 缺少page参数")
+            page = list(template_mapping.keys())[0]
+            # from flask import redirect, url_for
+            # return redirect(url_for('dashboard', page='users', token=token))
+        else:
+            page = request.args.get('page')
+        # 检查page参数是否有效
+        if page not in template_mapping:
+            logger.warning(f"仪表盘请求失败: 未知的page参数 - {page}")
+            return jsonify({'status': 400,'message': '未知的page参数'}), 400
+        # 读取模板和主页面内容
+        try:
+            with open(template_mapping[page]['template_file'], 'r', encoding='utf-8') as f:
+                template = f.read()
+            with open(teacher_dashboard_html_path, 'r', encoding='utf-8') as f:
+                response_html_code = f.read()
+            # 替换占位符
+            response_html_code = response_html_code.replace(
+                template_mapping[page]['placeholder'],
+                template
+            )
+            response_html_code = response_html_code.replace(
+                '<!--<|CHZT_REF_MENU_ITEM|>-->',
+                html_code_menu_items
+            )
+            return response_html_code, 200
+        except Exception as e:
+            logger.error(f"加载模板失败: {str(e)}")
+            return jsonify({'status': 500,'message': '加载模板失败'}), 500
     else:
         return jsonify({'status': 403,'message': '权限不足'}), 403
-    
 
 @app.route('/login', methods=['POST', 'OPTIONS'])
-# @cross_origin()
 def login():
     """
     用户登录接口
@@ -211,6 +268,9 @@ def login():
         cursor.close()
         conn.close()
 
+###################################
+# 用户管理接口
+###################################
 @app.route('/users', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def users():
@@ -441,6 +501,438 @@ def update_user_type(request_data):
     finally:
         cursor.close()
         conn.close()
+
+###################################
+# 小组管理接口
+###################################
+@app.route('/groups', methods=['POST', 'OPTIONS'])
+@jwt_required()
+def groups():
+    """
+    小组管理接口
+    参数: {request_type: 请求类型(add/delete/update/search/get_all), request_data: 请求数据}
+    返回: {status: 状态码, message: 消息, data: 数据(可选)}
+    """
+    current_user = get_jwt_identity()
+    # logger.info(f"JWT身份: {current_user}")
+    current_user = json.loads(current_user)
+    logger.info(f"JWT身份: {current_user}")
+    if not isinstance(current_user, dict) or 'type' not in current_user:
+        return jsonify({'status': 400,'message': '无效的JWT主题格式'}), 400
+    # 确保类型字段是字符串
+    current_user['type'] = str(current_user['type'])
+    logger.info(f"JWT身份: {current_user['type']}")
+    if current_user['type']!= 'admin' and current_user['type']!= 'teacher':
+        return jsonify({'status': 403,'message': '无权限操作'}), 403
+    logger.info(f"收到小组管理请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+
+    # 验证请求数据格式
+    request_type = data.get('request_type')
+    request_data = data.get('request_data')
+    if not request_type or not isinstance(request_type, str):
+        return jsonify({'status': 422,'message': '缺少或无效的request_type参数'}), 422
+
+    if request_type != 'get_all' and (not request_data or not isinstance(request_data, dict)):
+        return jsonify({'status': 422,'message': '缺少或无效的request_data参数'}), 422
+
+    if request_type == 'add':
+        # 添加小组
+        return add_group(request_data)
+    elif request_type == 'delete':
+        # 删除小组
+        return delete_group(request_data)
+    elif request_type == 'update':
+        # 更新小组信息
+        return update_group(request_data)
+    elif request_type =='get':
+        # 获取小组信息
+        return get_group_info(request_data)
+    elif request_type == 'get_all':
+        # 获取所有小组信息
+        return get_all_groups()
+    else:
+        return jsonify({'status': 400,'message': '无效的请求类型'}), 400
+
+def get_all_groups():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute('SELECT * FROM student_groups')
+        groups = cursor.fetchall()
+        # 将groups中的members字段转换为列表
+        for group in groups:
+            if group['members']:
+                group['members'] = group['members'].split(',')
+            else:
+                group['members'] = []
+            # 添加小组人数字段
+            group['members_count'] = len(group['members'])
+        return jsonify({'status': 200,'message':"获取成功", 'data': groups}), 200
+    except Exception as e:
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def add_group(request_data):
+    # 解析请求体中的JSON数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+
+    group_name = request_data.get('group_name')
+    members = request_data.get('members')
+    leader_name = request_data.get('leader_name')
+    # 验证参数
+    if not all([group_name, members, leader_name]):
+        return jsonify({'status': 400,'message': '缺少必要参数'}), 400
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查小组名是否已存在
+        cursor.execute('SELECT * FROM student_groups WHERE group_name = %s', (group_name,))
+        existing_group = cursor.fetchone()
+        if existing_group:
+            return jsonify({'status': 400,'message': '小组名已存在'}), 400
+        # Add groups
+        cursor.execute(
+            'INSERT INTO `student_groups` (group_name, members, leader_name) VALUES (%s, %s, %s)',
+            (group_name, ','.join(members), leader_name)
+        )
+        conn.commit()
+        return jsonify({'status': 200,'message': '小组添加成功'}), 200
+
+    except pymysql.err.IntegrityError:
+        return jsonify({'status': 400,'message': '小组名已存在'}), 400
+    except Exception as e:
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_group_info(request_data):
+    """
+    获取单个小组信息
+    :param request_data: 包含group_id的字典
+    :return: 小组信息
+    """
+    group_id = request_data.get('group_id')
+    if not group_id:
+        return jsonify({'status': 422, 'message': '缺少group_id参数'}), 422
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute('SELECT * FROM student_groups WHERE id = %s', (group_id,))
+        group = cursor.fetchone()
+        
+        if not group:
+            return jsonify({'status': 404, 'message': '小组不存在'}), 404
+            
+        return jsonify({
+            'status': 200,
+            'message': '获取小组信息成功',
+            'data': {
+                'id': group['id'],
+                'group_name': group['group_name'],
+                'leader_name': group['leader_name'],
+                'members': group['members'].split(',') if group['members'] else []
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取小组信息出错: {str(e)}")
+        return jsonify({'status': 500, 'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def update_group(request_data):
+    """
+    更新小组信息
+    参数: request_data 包含小组ID、名称和组长信息、成员信息的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400, 'message': '请求数据为空'}), 400
+    
+    group_id = request_data.get('group_id')
+    group_name = request_data.get('group_name')
+    leader_name = request_data.get('leader_name')
+    members = request_data.get('members')
+    
+    # 验证必要参数
+    if not all([group_id, group_name, leader_name, members]):
+        return jsonify({'status': 400,'message': '缺少必要参数'}), 400
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 检查小组是否存在
+        cursor.execute('SELECT id FROM student_groups WHERE id = %s', (group_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404, 'message': '小组不存在'}), 404
+            
+        # 更新小组信息
+        cursor.execute(
+            'UPDATE student_groups SET group_name = %s, leader_name = %s, members = %s WHERE id = %s',
+            (group_name, leader_name, ','.join(members), group_id)
+        )
+        conn.commit()
+        return jsonify({'status': 200, 'message': '小组更新成功'}), 200
+        
+    except Exception as e:
+        logger.error(f"更新小组出错: {str(e)}")
+        return jsonify({'status': 500, 'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def delete_group(request_data):
+    """
+    删除小组
+    参数: request_data 包含小组ID的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+
+    group_id = request_data.get('group_id')
+    if not group_id:
+        return jsonify({'status': 422,'message': '缺少group_id参数'}), 422
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查小组是否存在
+        cursor.execute('SELECT id FROM student_groups WHERE id = %s', (group_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '小组不存在'}), 404
+        # 删除小组
+        cursor.execute('DELETE FROM student_groups WHERE id = %s', (group_id,))
+        conn.commit()
+        return jsonify({'status': 200,'message': '小组删除成功'}), 200
+    except Exception as e:
+        logger.error(f"删除小组出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+###################################
+# 课程管理接口
+###################################
+@app.route('/courses', methods=['POST', 'OPTIONS'])
+@jwt_required()
+def courses():
+    """
+    课程管理接口
+    参数: {request_type: 请求类型(add/delete/update/get/get_all), request_data: 请求数据}
+    返回: {status: 状态码, message: 消息, data: 数据(可选)}
+    """
+    current_user = get_jwt_identity()
+    # logger.info(f"JWT身份: {current_user}")
+    current_user = json.loads(current_user)
+    logger.info(f"JWT身份: {current_user}")
+    if not isinstance(current_user, dict) or 'type' not in current_user:
+        return jsonify({'status': 400,'message': '无效的JWT主题格式'}), 400
+    # 确保类型字段是字符串
+    current_user['type'] = str(current_user['type'])
+    logger.info(f"JWT身份: {current_user['type']}")
+    if current_user['type']!= 'admin' and current_user['type']!= 'teacher':
+        return jsonify({'status': 403,'message': '无权限操作'}), 403
+    logger.info(f"收到课程管理请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+
+    # 验证请求数据格式
+    request_type = data.get('request_type')
+    request_data = data.get('request_data')
+    if not request_type or not isinstance(request_type, str):
+        return jsonify({'status': 422,'message': '缺少或无效的request_type参数'}), 422
+
+    if request_type!= 'get_all' and (not request_data or not isinstance(request_data, dict)):
+        return jsonify({'status': 422,'message': '缺少或无效的request_data参数'}), 422
+
+    if request_type == 'add':
+        # 添加课程
+        return add_course(request_data)
+    elif request_type == 'delete':
+        # 删除课程
+        return delete_course(request_data)
+    elif request_type == 'update':
+        # 更新课程信息
+        return update_course(request_data)
+    elif request_type =='get':
+        # 获取课程信息
+        return get_course_info(request_data)
+    elif request_type == 'get_all':
+        # 获取所有课程信息
+        return get_all_courses()
+    else:
+        return jsonify({'status': 400,'message': '无效的请求类型'}), 400
+
+def get_all_courses():
+    """
+    获取所有课程信息
+    对于每一条课程信息，获取其对应的课程名字、测试点个数
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute('SELECT * FROM courses')
+        courses = cursor.fetchall()
+        # 对于每一条课程信息，获取其对应的课程名字courses.course_name、测试点个数（匹配course_tasks.course_id）
+        for course in courses:
+            cursor.execute('SELECT COUNT(*) AS tmp_test_points FROM course_tasks WHERE course_id = %s', (course['id'],))
+            test_points = cursor.fetchone()['tmp_test_points']
+            course['tasks_count'] = test_points
+        return jsonify({'status': 200,'message':"获取成功", 'data': courses}), 200
+    except Exception as e:
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def add_course(request_data):
+    """
+    添加课程
+    参数: request_data 包含课程名称的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    course_name = request_data.get('course_name')
+    if not course_name:
+        return jsonify({'status': 422,'message': '缺少course_name参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查课程是否已存在
+        cursor.execute('SELECT id FROM courses WHERE course_name = %s', (course_name,))
+        if cursor.fetchone():
+            return jsonify({'status': 400,'message': '课程已存在'}), 400
+        # 添加课程
+        cursor.execute('INSERT INTO courses (course_name) VALUES (%s)', (course_name,))
+        conn.commit()
+        return jsonify({'status': 200,'message': '课程添加成功'}), 200
+    except Exception as e:
+        logger.error(f"添加课程出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_course_info(request_data):
+    """
+    获取课程信息
+    参数: request_data 包含课程ID的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    course_id = request_data.get('course_id')
+    if not course_id:
+        return jsonify({'status': 422,'message': '缺少course_id参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取课程信息
+        cursor.execute('SELECT * FROM courses WHERE id = %s', (course_id,))
+        course = cursor.fetchone()
+        if not course:
+            return jsonify({'status': 404,'message': '课程不存在'}), 404
+        # 获取课程对应的测试点信息
+        cursor.execute('SELECT * FROM course_tasks WHERE course_id = %s', (course_id,))
+        tasks = cursor.fetchall()
+        return jsonify({
+            'status': 200,
+            'message': '获取课程信息成功',
+            'data': {
+                'course': course,
+                'tasks': tasks
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"获取课程信息出错: {str(e)}")
+
+def update_course(request_data):
+    """
+    更新课程信息
+    参数: request_data 包含课程ID、名称的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    course_id = request_data.get('course_id')
+    course_name = request_data.get('course_name')
+    if not all([course_id, course_name]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查课程是否存在
+        cursor.execute('SELECT id FROM courses WHERE id = %s', (course_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '课程不存在'}), 404
+        # 更新课程信息
+        cursor.execute('UPDATE courses SET course_name = %s WHERE id = %s', (course_name, course_id))
+        conn.commit()
+        return jsonify({'status': 200,'message': '课程更新成功'}), 200
+    except Exception as e:
+        logger.error(f"更新课程出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def delete_course(request_data):
+    """
+    删除课程
+    参数: request_data 包含课程ID的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    course_id = request_data.get('course_id')
+    if not course_id:
+        return jsonify({'status': 422,'message': '缺少course_id参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查课程是否存在
+        cursor.execute('SELECT id FROM courses WHERE id = %s', (course_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '课程不存在'}), 404
+        # 删除课程
+        cursor.execute('DELETE FROM courses WHERE id = %s', (course_id,))
+        conn.commit()
+        return jsonify({'status': 200,'message': '课程删除成功'}), 200
+    except Exception as e:
+        logger.error(f"删除课程出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 
 if __name__ == '__main__':
     app.run(debug=True,port=5010)

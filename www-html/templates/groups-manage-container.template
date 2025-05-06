@@ -1,0 +1,388 @@
+<script>
+    let currentEditingGroupId = null;
+    // 当页面加载完成后执行
+    document.addEventListener('DOMContentLoaded', function() {
+        // 检查是否已登录
+        if (!localStorage.getItem('jwt_token')) {
+            // 如果未登录，跳转到登录页面
+            window.location.href = '/login';
+        }
+        // 加载小组列表
+        loadGroups();
+    })
+
+    // 加载小组列表
+    function loadGroups() {
+        // 获取JWT token
+        const token = localStorage.getItem('jwt_token');
+        if (!token) {
+            window.location.href = '/login';
+            return;
+        }
+        
+        // 调用后端API获取小组列表
+        fetch('/groups', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                request_type: 'get_all'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 200) {
+                console.log(data.data); // 打印小组列表数据，用于调试
+                // 渲染小组列表
+                renderGroups(data.data);
+            } else {
+                alert(`获取小组列表失败: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('获取小组列表出错:', error);
+            alert('获取小组列表时发生错误');
+        });
+    }
+
+    // 渲染小组列表
+    function renderGroups(groups) {
+        const container = document.getElementById('groupTableBody');
+        if (!container) return;
+        
+        // 清空现有内容
+        container.innerHTML = '';
+        
+        // 遍历小组数据并生成表格行
+        groups.forEach(group => {
+            const row = document.createElement('tr');
+            // 将成员数组转换为逗号分隔的字符串
+            const membersList = group.members ? group.members.join(', ') : '无成员';
+            row.innerHTML = `
+                <td>${group.id}</td>
+                <td>${group.group_name}</td>
+                <td>${group.leader_name || '无'}</td>
+                <td>${membersList}</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="showEditGroupForm('${group.id}')">编辑</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteGroup('${group.id}')">删除</button>
+                </td>
+            `;
+            container.appendChild(row);
+        });
+    }
+
+    // 显示添加小组表单
+    function showAddGroupForm() {
+        document.getElementById('groupManagementSection').style.display = 'none';
+        document.getElementById('addGroupSection').style.display = 'block';
+        document.getElementById('editGroupSection').style.display = 'none';
+        document.getElementById('groupName').value = '';
+        document.getElementById('leaderName').value = '';
+        document.getElementById('membersContainer').innerHTML = ''; // 清空成员输入框
+    }
+
+    // 隐藏添加小组表单
+    function hideAddGroupForm() {
+        document.getElementById('groupManagementSection').style.display = 'block';
+        document.getElementById('addGroupSection').style.display = 'none';
+    }
+
+    // 添加新小组，添加成员输入框
+    function addMemberField() {
+        const container = document.getElementById('membersContainer');
+        const div = document.createElement('div');
+        div.className = 'input-group mb-2';
+        div.innerHTML = `
+            <div class="input-group flex-nowrap" style="display: flex; margin-top:1%; margin-bottom:1%;">
+                <input type="text" class="form-control" placeholder="成员姓名">
+                <button class="btn btn-danger" type="button" onclick="this.parentElement.parentElement.remove()">删除</button>
+            </div>
+        `;
+        container.appendChild(div);
+    }
+
+    function addGroup() {
+        const groupName = document.getElementById('groupName').value.trim();
+        const leaderName = document.getElementById('leaderName').value.trim();
+        
+        if (!groupName || !leaderName) {
+            alert('请输入小组名称和组长姓名');
+            return;
+        }
+        
+        // 获取所有成员姓名, 过滤掉空值
+        const memberInputs = document.querySelectorAll('#membersContainer input');
+        const members = Array.from(memberInputs).map(input => input.value.trim()).filter(name => name);
+        
+        // 调用后端API添加小组
+        fetch('/groups', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+            },
+            body: JSON.stringify({
+                request_type: 'add',
+                request_data: {
+                    group_name: groupName,
+                    leader_name: leaderName,
+                    members: members
+                }
+            })
+        }
+        ).then(response => response.json())
+        .then(data => {
+            if (data.status === 200) {
+                alert('小组添加成功');
+                // 刷新小组列表
+                loadGroups();
+            } else {
+                alert(`添加小组失败: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('添加小组出错:', error);
+            alert('添加小组时发生错误');
+        })
+        .finally(() => {
+            // 隐藏添加小组表单
+            hideAddGroupForm();
+            // 刷新小组列表
+            loadGroups();
+            // 重置表单
+            document.getElementById('groupName').value = '';
+            document.getElementById('leaderName').value = '';
+            // 重置成员输入框
+            document.getElementById('membersContainer').innerHTML = '';
+        })
+    }
+
+    // 为编辑表单添加成员输入框
+    function addEditMemberField(name="") {
+        const container = document.getElementById('editMembersContainer');
+        const div = document.createElement('div');
+        div.className = 'input-group mb-2';
+        div.innerHTML = `
+            <div class="input-group flex-nowrap" style="display: flex; margin-top:1%; margin-bottom:1%;">
+                <input type="text" class="form-control" placeholder="成员姓名">
+                <button class="btn btn-danger" type="button" onclick="this.parentElement.parentElement.remove()">删除</button>
+            </div>
+        `;
+        if (name) {
+            div.querySelector('input').value = name;
+        }
+        container.appendChild(div);
+        
+    }
+
+    // 显示编辑小组表单
+    function showEditGroupForm(groupId) {
+        currentEditingGroupId = groupId; // 存储当前编辑的小组ID
+        document.getElementById('groupManagementSection').style.display = 'none';
+        document.getElementById('addGroupSection').style.display = 'none';
+        document.getElementById('editGroupSection').style.display = 'block';
+
+        // 清空输入框
+        document.getElementById('editGroupName').value = '';
+        document.getElementById('editLeaderName').value = '';
+        document.getElementById('editMembersContainer').innerHTML = '';
+        
+        // 调用API获取小组详细信息
+        fetch('/groups', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+            },
+            body: JSON.stringify({
+                request_type: 'get',
+                request_data: {
+                    group_id: groupId
+                }
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 200) {
+                const group = data.data;
+                document.getElementById('editGroupName').value = group.group_name;
+                document.getElementById('editLeaderName').value = group.leader_name;
+                // 添加成员信息的填充，填充成员输入框
+                if (group.members && group.members.length > 0) {
+                    group.members.forEach(member => {
+                        addEditMemberField(member); // 填充成员输入框
+                    });
+                }
+            } else {
+                alert(`获取小组信息失败: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('获取小组信息出错:', error);
+            alert('获取小组信息时发生错误');
+        });
+    }
+
+    // 隐藏编辑小组表单
+    function hideEditGroupForm() {
+        currentEditingGroupId = null; // 清空当前编辑的小组ID
+        document.getElementById('groupManagementSection').style.display = 'block';
+        document.getElementById('editGroupSection').style.display = 'none';
+    }
+
+    // 更新小组信息
+    function updateGroup() {
+        const groupName = document.getElementById('editGroupName').value.trim();
+        const leaderName = document.getElementById('editLeaderName').value.trim();
+        
+        if (!groupName || !leaderName) {
+            alert('请输入小组名称和组长姓名');
+            return;
+        }
+        
+        // 调用API更新小组
+        fetch('/groups', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+            },
+            body: JSON.stringify({
+                request_type: 'update',
+                request_data: {
+                    group_id: currentEditingGroupId, // 需要存储当前编辑的小组ID
+                    group_name: groupName,
+                    leader_name: leaderName,
+                    members: Array.from(document.querySelectorAll('#editMembersContainer input')).map(input => input.value.trim()).filter(name => name)
+                }
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 200) {
+                alert('小组更新成功');
+                hideEditGroupForm();
+                // 刷新小组列表
+                loadGroups();
+            } else {
+                alert(`更新小组失败: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('更新小组出错:', error);
+            alert('更新小组时发生错误');
+        });
+    }
+
+    // 删除小组
+    function deleteGroup(groupId) {
+        if (confirm('确定要删除这个小组吗？')) {
+            // TODO: 调用API删除小组
+            fetch('/groups', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+                },
+                body: JSON.stringify({
+                    request_type: 'delete',
+                    request_data: {
+                        group_id: groupId
+                    }
+                })
+            }).then(response => response.json())
+            .then(data => {
+                if (data.status === 200) {
+                    alert('小组删除成功');
+                    // 刷新小组列表
+                    loadGroups();
+                } else {
+                    alert(`删除小组失败: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error('删除小组出错:', error);
+                alert('删除小组时发生错误');
+            })
+           .finally(() => {
+                // 刷新小组列表
+                loadGroups();
+            })
+        }
+    }
+
+</script>
+<div class="groups-container">
+    <div class="row mb-4" style="padding-bottom: 2%">
+        <div class="col-md-6">
+            <h2>小组管理</h2>
+        </div>
+        <div class="col-md-6 text-end">
+            <button class="btn btn-primary" id="addGroupBtn" onclick="showAddGroupForm()">添加小组</button>
+        </div>
+    </div>
+    
+    <div id="groupManagementSection">
+        <table class="table table-striped group-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>小组名称</th>
+                    <th>小组负责人</th>
+                    <th>小组成员</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="groupTableBody"></tbody>
+        </table>
+    </div>
+    
+    <div id="addGroupSection" style="display:none;">
+        <div class="form-container card shadow p-4 mb-5 bg-body rounded" style="max-width: 600px; margin: 0 auto;">
+            <h2 class="text-center mb-4">添加小组</h2>
+            <div class="mb-3">
+                <label for="groupName" class="form-label">小组名称</label>
+                <input type="text" class="form-control" id="groupName" required>
+            </div>
+            <div class="mb-3">
+                <label for="leaderName" class="form-label">组长姓名</label>
+                <input type="text" class="form-control" id="leaderName" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">小组成员</label>
+                <div id="membersContainer"></div>
+                <button type="button" class="btn btn-secondary mt-2" style="margin-top: 1%;" onclick="addMemberField()">添加成员</button>
+            </div>
+            <div class="text-center">
+                <button type="button" class="btn btn-secondary me-2" id="cancelAddGroupBtn" onclick="hideAddGroupForm()">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmAddGroupBtn" onclick="addGroup()">确认</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="editGroupSection" style="display:none;">
+        <div class="form-container card shadow p-4 mb-5 bg-body rounded" style="max-width: 600px; margin: 0 auto;">
+            <h2 class="text-center mb-4">编辑小组</h2>
+            <div class="mb-3">
+                <label for="editGroupName" class="form-label">小组名称</label>
+                <input type="text" class="form-control" id="editGroupName" required>
+            </div>
+            <div class="mb-3">
+                <label for="editLeaderName" class="form-label">组长姓名</label>
+                <input type="text" class="form-control" id="editLeaderName" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">小组成员</label>
+                <div id="editMembersContainer"></div>
+                <button type="button" class="btn btn-secondary mt-2" style="margin-top: 1%;" onclick="addEditMemberField('')">添加成员</button>
+            </div>
+            <div class="text-center">
+                <button type="button" class="btn btn-secondary me-2" id="cancelEditGroupBtn" onclick="hideEditGroupForm()">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmEditGroupBtn" onclick="updateGroup()">确认</button>
+            </div>
+        </div>
+    </div>
+</div>
