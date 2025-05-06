@@ -133,40 +133,7 @@ def dashboard():
             logger.error(f"加载模板失败: {str(e)}")
             return jsonify({'status': 500,'message': '加载模板失败'}), 500
         
-        # if(page=='users'):
-        #     template = ""
-        #     # 读入users-container.template内容存入变量template中
-        #     with open('www-html/users-container.template', 'r', encoding='utf-8') as f:
-        #         template = f.read()
-        #     # 读入www-html/dashboard/users.html文件到response_html_code中
-        #     with open('www-html/admin_dashboard.html', 'r', encoding='utf-8') as f:
-        #         response_html_code = f.read()
-        #     # 对response_html_code进行替换，将<|CHZT_REF|>替换为template内容
-        #     response_html_code = response_html_code.replace('<!--<|CHZT_REF|>-->', template)
-        # elif(page=='systemsettings'):
-        #     template = ""
-        #     # 读入systemsettings-container.template内容存入变量template中
-        #     with open('www-html/system-settings-container.template', 'r', encoding='utf-8') as f:
-        #         template = f.read()
-        #     # 读入www-html/dashboard/systemsettings.html文件到response_html_code中
-        #     with open('www-html/admin_dashboard.html', 'r', encoding='utf-8') as f:
-        #         response_html_code = f.read()
-        #     # 对response_html_code进行替换，将<|CHZT_REF|>替换为template内容
-        #     response_html_code = response_html_code.replace('<|CHZT_REF|>', template)
-        # elif(page=='logview'):
-        #     template = ""
-        #     # 读入logview-container.template内容存入变量template中
-        #     with open('www-html/log-view-container.template', 'r', encoding='utf-8') as f:
-        #         template = f.read()
-        #     # 读入www-html/dashboard/logview.html文件到response_html_code中
-        #     with open('www-html/admin_dashboard.html', 'r', encoding='utf-8') as f:
-        #         response_html_code = f.read()
-        #     # 对response_html_code进行替换，将<|CHZT_REF|>替换为template内容
-        #     response_html_code = response_html_code.replace('<|CHZT_REF|>', template)
-        # else:
-        #     logger.warning(f"仪表盘请求失败: 未知的page参数 - {page}")
-        #     return jsonify({'status': 400,'message': '未知的page参数'}), 400
-        # return response_html_code, 200
+        
     else:
         return jsonify({'status': 403,'message': '权限不足'}), 403
     
