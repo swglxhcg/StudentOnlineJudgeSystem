@@ -47,6 +47,14 @@ def index():
     """
     return app.send_static_file('index.html')
 
+@app.route('/teacher_login', methods=['GET'])
+def teacher_login():
+    """
+    教师登录页面返回
+    返回: www目录下的teacher_login.html文件
+    """
+    return app.send_static_file('teacher_login.html') 
+
 @app.route('/<path:filename>', methods=['GET'])
 def static_html(filename):
     """
@@ -132,6 +140,8 @@ def dashboard():
         except Exception as e:
             logger.error(f"加载模板失败: {str(e)}")
             return jsonify({'status': 500,'message': '加载模板失败'}), 500
+    elif current_user.get('type') == 'teacher':
+        logger.info(f"用户 {current_user.get('id')} (ID: {current_user.get('id')}) 已登录")
     else:
         return jsonify({'status': 403,'message': '权限不足'}), 403
     
