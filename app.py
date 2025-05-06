@@ -88,7 +88,7 @@ def dashboard():
         # 判断url是否有参数page
         page = ""
         if not request.args.get('page'):
-            logger.warning("仪表盘请求失败: 缺少page参数")
+            logger.warning("仪表盘请求: 缺少page参数")
             page = 'users'
             # from flask import redirect, url_for
             # return redirect(url_for('dashboard', page='users', token=token))
@@ -99,15 +99,15 @@ def dashboard():
         template_mapping = {
             'users': {
                 'template_file': 'www-html/users-container.template',
-                'placeholder': '<!--<|CHZT_REF|>-->'
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
             },
             'systemsettings': {
                 'template_file': 'www-html/system-settings-container.template',
-                'placeholder': '<!--<|CHZT_REF|>-->'
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
             },
             'logview': {
                 'template_file': 'www-html/log-view-container.template',
-                'placeholder': '<!--<|CHZT_REF|>-->'
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
             }
         }
         
@@ -132,8 +132,6 @@ def dashboard():
         except Exception as e:
             logger.error(f"加载模板失败: {str(e)}")
             return jsonify({'status': 500,'message': '加载模板失败'}), 500
-        
-        
     else:
         return jsonify({'status': 403,'message': '权限不足'}), 403
     
