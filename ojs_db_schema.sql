@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS courses (
 CREATE TABLE IF NOT EXISTS course_tasks (
     id INT AUTO_INCREMENT PRIMARY KEY COMMENT '任务点ID',
     course_id INT NOT NULL COMMENT '所属课程ID',
-    task_name VARCHAR(100) NOT NULL COMMENT '任务点名称',
+    task_name LONGTEXT NOT NULL COMMENT '任务点名称',
     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
 ) COMMENT '课程任务点表';
 
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS task_submissions (
     id INT AUTO_INCREMENT PRIMARY KEY COMMENT '提交记录ID',
     task_id INT NOT NULL COMMENT '任务点ID',
     group_id INT NOT NULL COMMENT '提交小组ID',
-    content TEXT COMMENT '提交内容，包含文本和图片(格式:<|BASE:xxxxx|>)',
+    content LONGTEXT COMMENT '提交内容，包含文本和图片(格式:<|BASE:xxxxx|>)',
     submitted_at TIMESTAMP DEFAULT '2025-01-01 00:00:00' COMMENT '提交时间',
     FOREIGN KEY (task_id) REFERENCES course_tasks(id) ON DELETE CASCADE,
     FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE
@@ -81,3 +81,11 @@ CREATE TABLE IF NOT EXISTS teacher_evaluations (
     FOREIGN KEY (evaluated_group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
     FOREIGN KEY (criteria_id) REFERENCES task_criteria(id) ON DELETE CASCADE
 ) COMMENT '教师评分记录表';
+
+-- 9. 任务点描述表
+CREATE TABLE IF NOT EXISTS task_descriptions (
+    id INT AUTO_INCREMENT PRIMARY KEY COMMENT '描述ID',
+    task_id INT NOT NULL COMMENT '所属任务点ID',
+    description LONGTEXT NOT NULL COMMENT '任务描述内容',
+    FOREIGN KEY (task_id) REFERENCES course_tasks(id) ON DELETE CASCADE
+) COMMENT '任务点描述表';
