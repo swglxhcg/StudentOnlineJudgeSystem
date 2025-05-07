@@ -176,6 +176,8 @@
             console.error('获取课程信息出错:', error);
             alert('获取课程信息时发生错误');
         });
+        // 加载任务点列表
+        loadTasks(courseId);
     }
 
     // 隐藏编辑课程表单
@@ -264,6 +266,144 @@
             });
         }
     }
+
+    function createTask() {
+        // 创建一个悬浮框，用于输入任务点名称
+        const taskName = prompt('请输入任务点名称：');
+        if (taskName) {
+            // 调用后端API创建任务点
+            fetch('/course_tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+                },
+                body: JSON.stringify({
+                    request_type: 'add',
+                    request_data: {
+                        course_id: currentEditingCourseId, // 使用当前编辑的课程ID
+                        task_name: taskName
+                    }
+                })
+            }).then(response => response.json())
+           .then(data => {
+                if (data.status === 200) {
+                    alert('任务点创建成功');
+                    // 重新加载任务点列表
+                    loadTasks(currentEditingCourseId);
+                } else {
+                    alert(`创建任务点失败: ${data.message}`);
+                }
+            })
+           .catch(error => {
+                console.error('创建任务点出错:', error);
+                alert('创建任务点时发生错误');
+           })
+        }
+    }
+
+    // 加载任务点列表
+    function loadTasks(courseId) {
+        fetch('/course_tasks', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+            },
+            body: JSON.stringify({
+                request_type: 'get_all', // 获取所有任务点
+                request_data: {
+                    course_id: courseId // 使用当前编辑的课程ID
+                }
+            })
+        }).then(response => response.json())
+        .then(data => {
+            if (data.status === 200) {
+                const tasks = data.data.tasks; // 获取任务点列表
+                const taskList = document.getElementById('taskList'); // 获取任务点表格容器
+                taskList.innerHTML = ''; // 清空现有内容
+
+                // 遍历任务点并生成表格行
+                tasks.forEach(task => {
+                    const row = document.createElement('tr');
+
+                    // 添加任务点名称单元格
+                    const nameCell = document.createElement('td');
+                    nameCell.textContent = task.task_name;
+                    row.appendChild(nameCell);
+                    
+                    // 添加操作单元格
+                    const actionCell = document.createElement('td');
+
+                    // 添加编辑按钮
+                    const editButton = document.createElement('button');
+                    editButton.className = 'btn btn-primary btn-sm me-2';
+                    editButton.textContent = '进入编辑';
+                    editButton.onclick = () => {
+                        // 跳转到编辑任务点页面，传递任务点ID作为参数，请使用新窗口打开，请携带token
+                        let url_token = localStorage.getItem('jwt_token');
+                        let url = `/edit_task?task_id=${task.id}&token=${url_token}`;
+                        window.open(url, '_blank');
+                    }
+                    
+                    // 添加删除按钮
+                    const deleteButton = document.createElement('button');
+                    deleteButton.className = 'btn btn-danger btn-sm';
+                    deleteButton.textContent = '删除';
+                    deleteButton.onclick = () => deleteTask(task.id); // 绑定删除任务点的函数
+                    
+                    // 将按钮添加到操作单元格
+                    actionCell.appendChild(editButton);
+                    actionCell.appendChild(deleteButton);
+                    row.appendChild(actionCell);
+                    
+                    taskList.appendChild(row); // 将行添加到表格中
+                })
+            }
+        })
+       .catch(error => {
+            console.error('加载任务点列表出错:', error);
+            alert('加载任务点列表时发生错误');
+       })
+       .finally(() => {
+            // 显示任务点列表
+            document.getElementById('courseTasks').style.display = 'block';
+        })
+    }
+
+    // 删除任务点
+    function deleteTask(taskId) {
+        if (confirm('确定要删除这个任务点吗？')) {
+            fetch('/course_tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+                },
+                body: JSON.stringify({
+                    request_type: 'delete',
+                    request_data: {
+                        task_id: taskId
+                    }
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 200) {
+                    alert('任务点删除成功');
+                    // 重新加载任务点列表
+                    loadTasks(currentEditingCourseId);
+                } else {
+                    alert(`删除任务点失败: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error('删除任务点出错:', error);
+                alert('删除任务点时发生错误');
+            })
+        }
+    }
+
 </script>
 <style>
     .container-title{
@@ -318,6 +458,25 @@
             <div class="mb-3 container-textbox">
                 <label for="editCourseName" class="form-label">课程名称</label>
                 <input type="text" class="form-control" id="editCourseName" required>
+            </div>
+            <!-- 添加显示区域，用于显示课程的任务点 -->
+            <div id="courseTasks">
+                <h4 class="mb-3">任务点列表</h4>
+                <table class="table table-striped task-table">
+                    <thead>
+                        <tr>
+                            <th>任务点名称</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="taskList">
+                        <!-- 任务点列表将在这里显示 -->
+                    </tbody>
+                </table>
+                <!-- 创建按钮：添加任务点 -->
+                <div class="mt-3 container-textbox">
+                    <button class="btn btn-primary mt-2" onclick="createTask()">创建任务点</button>
+                </div>
             </div>
             <div class="text-center">
                 <button type="button" class="btn btn-secondary me-2" id="cancelEditCourseBtn" onclick="hideEditCourseForm()">取消</button>

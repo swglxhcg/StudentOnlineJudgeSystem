@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS, cross_origin
 from datetime import timedelta
@@ -8,6 +8,11 @@ import json
 import re
 from ct_logger import CtLogger, RichCtLogger
 from flask_jwt_extended import decode_token
+import os
+import uuid
+from werkzeug.utils import secure_filename
+from PIL import Image
+import io
 
 # 创建全局日志记录器
 logger = RichCtLogger('ojs_app')
@@ -37,6 +42,89 @@ def hash_password(password_md5, salt='random_salt'):
     """对MD5加密后的密码进行加盐哈希"""
     return hashlib.pbkdf2_hmac('sha256', password_md5.encode(), salt.encode(), 100000).hex()
 
+@app.route('/image/upload', methods=['POST'])
+@jwt_required()
+def upload_image():
+    """
+    图片上传接口
+    返回: {status: 状态码, message: 消息, path: 图片路径(成功时)}
+    """
+    if 'file' not in request.files:
+        return jsonify({'status': 400, 'message': '没有上传文件'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 400, 'message': '没有选择文件'}), 400
+    
+    if file and allowed_file(file.filename):
+        # 检查文件大小 (2MB = 2 * 1024 * 1024 bytes)
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+        
+        if file_size > 2 * 1024 * 1024:
+            logger.info(f"图片大小超过2MB: {file_size} bytes")
+            try:
+                
+                # 读取图片
+                img = Image.open(file.stream)
+                # 计算压缩比例 (目标大小2MB)
+                quality = int((2 * 1024 * 1024) / file_size * 100)
+                quality = max(10, min(90, quality))  # 限制在10-90质量范围
+                
+                # 压缩图片
+                output = io.BytesIO()
+                if img.format == 'JPEG':
+                    img.save(output, format='JPEG', quality=quality, optimize=True)
+                else:
+                    img.save(output, format=img.format, quality=quality)
+                
+                file.stream = output
+                file.seek(0)
+            except Exception as e:
+                logger.error(f"图片压缩失败: {str(e)}")
+                return jsonify({'status': 400, 'message': '图片压缩失败'}), 400
+        
+        # 生成唯一文件名
+        filename = secure_filename(file.filename)
+        unique_name = f"{uuid.uuid4().hex}_{filename}"
+        
+        # 如果没有扩展名，添加.jpg
+        if not unique_name.endswith(('.png', '.jpg', '.jpeg', '.gif')):
+            unique_name += '.png'
+        
+        logger.info(f"图片上传: {filename} -> {unique_name}")
+        
+        # 确保上传目录存在
+        upload_folder = os.path.join(app.root_path, 'static', 'uploads')
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        # 检查文件是否已存在
+        while os.path.exists(os.path.join(upload_folder, unique_name)):
+            unique_name = f"{uuid.uuid4().hex}_{filename}"
+            logger.info(f"文件名冲突，生成新文件名: {unique_name}")
+        
+        # 保存文件
+        file_path = os.path.join(upload_folder, unique_name)
+        file.save(file_path)
+        logger.info(f"图片保存成功: {file_path}")
+        
+        # 返回相对路径
+        relative_path = f"/static/uploads/{unique_name}"
+        return jsonify({
+            'status': 200,
+            'message': '上传成功',
+            'path': relative_path
+        }), 200
+    
+    return jsonify({'status': 400, 'message': '不支持的文件类型'}), 400
+
+def allowed_file(filename):
+    """检查文件扩展名是否允许"""
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 @app.route('/', methods=['GET'])
 def index():
     """
@@ -53,6 +141,23 @@ def teacher_login():
     """
     return app.send_static_file('teacher_login.html') 
 
+@app.route('/edit_task', methods=['GET'])
+def edit_task():
+    """
+    编辑任务页面返回
+    返回: www目录下的edit_task.html文件
+    """
+    token = request.args.get('token')
+    if not token:
+        return jsonify({'status': 401,'message': '缺少token参数'}), 401
+    decoded_token = decode_token(token)
+    current_user = decoded_token['sub']
+    current_user = json.loads(current_user)
+    if current_user.get('type') != 'admin' and current_user.get('type')!= 'teacher':
+        return jsonify({'status': 401,'message': '权限不足'}), 401
+    else:
+        return app.send_static_file('edit_task.html')
+
 @app.route('/<path:filename>', methods=['GET'])
 def static_html(filename):
     """
@@ -60,13 +165,34 @@ def static_html(filename):
     参数: filename(URL路径)
     返回: www目录下对应的静态文件(仅处理.html文件)
     """
-    if filename.endswith('.html'):
+    logger.info(f"收到静态文件请求: {filename}")
+    if not filename.endswith('.html'):
+        logger.info(f"静态文件请求: {filename} 不是HTML文件")
         return app.send_static_file(filename)
+    logger.warning(f"静态文件请求: {filename} 是HTML文件")
     return "Not Found", 404
 
+@app.route('/static/uploads/<path:filename>', methods=['GET'])
+def get_image_static_uploads(filename):
+    """
+    静态文件处理接口(图片)
+    参数: filename(URL路径)
+    返回: www目录下对应的静态文件(仅处理图片文件)
+    """
+    logger.info(f"收到静态文件请求: {filename}")
+    file_path = os.path.join(app.root_path, 'static', 'uploads', filename)
+    if not os.path.exists(file_path):
+        logger.warning(f"文件不存在: {file_path}")
+        return "Not Found", 404
+    
+    if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+        logger.warning(f"不支持的文件类型: {filename}")
+        return "Not Found, only get images", 404
+    
+    logger.info(f"返回图片文件: {filename}")
+    return send_from_directory(os.path.join(app.root_path, 'static', 'uploads'), filename)
+
 @app.route('/dashboard', methods=['GET', 'OPTIONS'])
-# @cross_origin()
-# @jwt_required(locations=['query_string'])
 def dashboard():
     """
     教师仪表盘接口
@@ -204,6 +330,7 @@ def dashboard():
     else:
         return jsonify({'status': 403,'message': '权限不足'}), 403
 
+# 登录接口
 @app.route('/login', methods=['POST', 'OPTIONS'])
 def login():
     """
@@ -928,6 +1055,276 @@ def delete_course(request_data):
         return jsonify({'status': 200,'message': '课程删除成功'}), 200
     except Exception as e:
         logger.error(f"删除课程出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+###################################
+# 测试点管理接口
+###################################
+@app.route('/course_tasks', methods=['POST', 'OPTIONS'])
+@jwt_required()
+def course_tasks():
+    """
+    测试点管理接口
+    参数: {request_type: 请求类型(add/delete/update/get/get_all), request_data: 请求数据}
+    返回: {status: 状态码, message: 消息, data: 数据(可选)}
+    """
+    current_user = get_jwt_identity()
+    # logger.info(f"JWT身份: {current_user}")
+    current_user = json.loads(current_user)
+    logger.info(f"JWT身份: {current_user}")
+    if not isinstance(current_user, dict) or 'type' not in current_user:
+        return jsonify({'status': 400,'message': '无效的JWT主题格式'}), 400
+    # 确保类型字段是字符串
+    current_user['type'] = str(current_user['type'])
+    logger.info(f"JWT身份: {current_user['type']}")
+    if current_user['type']!= 'admin' and current_user['type']!= 'teacher':
+        return jsonify({'status': 403,'message': '无权限操作'}), 403
+    logger.info(f"收到测试点管理请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+
+    # 验证请求数据格式
+    request_type = data.get('request_type')
+    request_data = data.get('request_data')
+    if not request_type or not isinstance(request_type, str):
+        return jsonify({'status': 422,'message': '缺少或无效的request_type参数'}), 422
+
+    if request_type!= 'get_all' and (not request_data or not isinstance(request_data, dict)):
+        return jsonify({'status': 422,'message': '缺少或无效的request_data参数'}), 422
+    if request_type == 'add':
+        # 添加测试点
+        return add_course_task(request_data)
+    elif request_type == 'delete':
+        # 删除测试点
+        return delete_course_task(request_data)
+    elif request_type == 'update':
+        # 更新测试点信息
+        return update_course_task(request_data)
+    elif request_type =='get':
+        # 获取测试点信息
+        return get_course_task_info(request_data)
+    elif request_type == 'get_all':
+        # 获取所有测试点信息
+        return get_all_course_tasks()
+    else:
+        return jsonify({'status': 400,'message': '无效的请求类型'}), 400
+
+def get_all_course_tasks():
+    """
+    获取所有测试点信息
+    对于每一条测试点信息，获取其对应的课程名字、测试点名字
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute('SELECT * FROM course_tasks')
+        tasks = cursor.fetchall()
+        # 对于每一条测试点信息，获取其对应的课程名字courses.course_name、测试点名字course_tasks.task_name
+        for task in tasks:
+            cursor.execute('SELECT course_name FROM courses WHERE id = %s', (task['course_id'],))
+            course_name = cursor.fetchone()['course_name']
+            task['course_name'] = course_name
+        return jsonify({'status': 200,'message':"获取成功", 'data': {'tasks':tasks}}), 200
+    except Exception as e:
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def add_course_task(request_data):
+    """
+    添加测试点
+    参数: request_data 包含课程ID、测试点名称的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    course_id = request_data.get('course_id')
+    task_name = request_data.get('task_name')
+    if not all([course_id, task_name]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查课程是否存在
+        cursor.execute('SELECT id FROM courses WHERE id = %s', (course_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '课程不存在'}), 404
+        # 检查测试点是否已存在
+        cursor.execute('SELECT id FROM course_tasks WHERE course_id = %s AND task_name = %s', (course_id, task_name))
+        if cursor.fetchone():
+            return jsonify({'status': 400,'message': '测试点已存在'}), 400
+        # 添加测试点
+        cursor.execute('INSERT INTO course_tasks (course_id, task_name) VALUES (%s, %s)', (course_id, task_name))
+        conn.commit()
+        return jsonify({'status': 200,'message': '测试点添加成功'}), 200
+    except Exception as e:
+        logger.error(f"添加测试点出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def delete_course_task(request_data):
+    """
+    删除测试点
+    参数: request_data 包含测试点ID的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    task_id = request_data.get('task_id')
+    if not task_id:
+        return jsonify({'status': 422,'message': '缺少task_id参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查测试点是否存在
+        cursor.execute('SELECT id FROM course_tasks WHERE id = %s', (task_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '测试点不存在'}), 404
+        # 删除测试点
+        cursor.execute('DELETE FROM course_tasks WHERE id = %s', (task_id,))
+        conn.commit()
+        return jsonify({'status': 200,'message': '测试点删除成功'}), 200
+    except Exception as e:
+        logger.error(f"删除测试点出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_course_task_info(request_data):
+    """
+    获取测试点信息
+    参数: request_data 包含测试点ID的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    task_id = request_data.get('task_id')
+    if not task_id:
+        return jsonify({'status': 422,'message': '缺少task_id参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取测试点信息
+        cursor.execute('SELECT * FROM course_tasks WHERE id = %s', (task_id,))
+        task = cursor.fetchone()
+        if not task:
+            return jsonify({'status': 404,'message': '测试点不存在'}), 404
+        # 获取测试点对应的课程名字
+        cursor.execute('SELECT course_name FROM courses WHERE id = %s', (task['course_id'],))
+        course_name = cursor.fetchone()['course_name']
+        task['course_name'] = course_name
+        # 获取测试点的评分点信息task_criteria.criteria_name、task_criteria.criteria_description通过task_criteria.task_id
+        cursor.execute('SELECT criteria_name, criteria_description FROM task_criteria WHERE task_id = %s', (task_id,))
+        criteria = cursor.fetchall()
+        task['criterias'] = criteria
+        
+        ### 获取测试点的内容信息task_descriptions.description通过task_descriptions.task_id
+        cursor.execute('SELECT description FROM task_descriptions WHERE task_id = %s', (task_id,))
+        description = cursor.fetchone()
+        task['description'] = description['description'] if description else ''
+        return jsonify({
+           'status': 200,
+           'message': '获取测试点信息成功',
+            'data': {
+                'task': task
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取测试点信息出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def update_course_task(request_data):
+    """
+    更新测试点信息
+    参数: request_data 包含测试点ID、名称的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    task_id = request_data.get('task_id')
+    task_name = request_data.get('task_name')   # 测试点名称
+    task_description = request_data.get('content')   # 测试点内容
+    task_criterias = request_data.get('criterias')   # 测试点评分点信息
+    
+    if not all([task_id, task_name]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        ##### 更新测试点信息 #####
+        # 检查测试点是否存在
+        cursor.execute('SELECT id FROM course_tasks WHERE id = %s', (task_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '测试点不存在'}), 404
+        # 更新测试点信息
+        cursor.execute('UPDATE course_tasks SET task_name = %s WHERE id = %s', (task_name, task_id))
+        conn.commit()
+        
+        ##### 更新测试点内容 #####
+        # 检查测试点内容是否存在task_descriptions.task_id = task_id
+        cursor.execute('SELECT id FROM task_descriptions WHERE task_id = %s', (task_id,))
+        if cursor.fetchone():
+            # 更新测试点内容
+            cursor.execute('UPDATE task_descriptions SET description = %s WHERE task_id = %s', (task_description, task_id))
+            conn.commit()
+        else:
+            # 添加测试点内容
+            cursor.execute('INSERT INTO task_descriptions (task_id, description) VALUES (%s, %s)', (task_id, task_description))
+            
+        ##### 更新测试点评分点信息 #####
+        # 检查测试点评分点信息是否存在task_criteria.task_id = task_id
+        cursor.execute('SELECT id FROM task_criteria WHERE task_id = %s', (task_id,))
+        if cursor.fetchone():
+            # 更新测试点评分点信息
+            for criteria in task_criterias:
+                criteria_name = criteria.get('criteria_name')
+                criteria_description = criteria.get('criteria_description')
+                if not all([criteria_name,]):
+                    return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+                # 检查测试点评分点信息是否存在
+                cursor.execute('SELECT id FROM task_criteria WHERE task_id = %s AND criteria_name = %s', (task_id, criteria_name))
+                if cursor.fetchone():
+                    # 更新测试点评分点信息
+                    cursor.execute('UPDATE task_criteria SET criteria_description = %s WHERE task_id = %s AND criteria_name = %s', (criteria_description, task_id, criteria_name))
+                else:
+                    # 添加测试点评分点信息
+                    cursor.execute('INSERT INTO task_criteria (task_id, criteria_name, criteria_description) VALUES (%s, %s, %s)', (task_id, criteria_name, criteria_description))
+            conn.commit()
+        else:
+            # 添加测试点评分点信息
+            for criteria in task_criterias:
+                criteria_name = criteria.get('criteria_name')
+                criteria_description = criteria.get('criteria_description')
+                if not all([criteria_name,]):
+                    return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+                # 添加测试点评分点信息
+                cursor.execute('INSERT INTO task_criteria (task_id, criteria_name, criteria_description) VALUES (%s, %s, %s)', (task_id, criteria_name, criteria_description))
+            conn.commit()
+        # 提交事务
+        conn.commit()
+        # 返回成功响应
+        return jsonify({'status': 200,'message': '测试点更新成功'}), 200
+    except Exception as e:
+        logger.error(f"更新测试点出错: {str(e)}")
         return jsonify({'status': 500,'message': str(e)}), 500
     finally:
         cursor.close()

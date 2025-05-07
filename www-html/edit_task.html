@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务点编辑</title>
+    <!-- Bootstrap CSS -->
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <!-- Summernote CSS -->
+    <link href="css/summernote-bs5.min.css" rel="stylesheet">
+     <script src="script/bootstrap.bundle.min.js"></script>
+     <script src="script/jquery.min.js"></script>
+     <script src="script/summernote-bs5.min.js"></script>
+     <script src="script/summernote-zh-CN.js"></script>
+    <style>
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .divider {
+            margin: 30px 0;
+            border-top: 1px solid #dee2e6;
+        }
+        .btn-group {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">任务点编辑</h1>
+        
+        <!-- 任务点名称输入框 -->
+        <div class="mb-4">
+            <label for="taskName" class="form-label">任务点名称</label>
+            <input type="text" class="form-control" id="taskName" placeholder="请输入任务点名称">
+        </div>
+        
+        <!-- Summernote编辑器 -->
+        <div class="mb-4">
+            <label class="form-label">任务点内容</label>
+            <div id="summernote"></div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <!-- 评分点表格 -->
+        <div class="mb-4">
+            <h5 class="mb-3">评分点</h5>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>评分项</th>
+                        <th>评分项描述</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="criteriaItems">
+                    <!-- 评分点将在这里动态生成 -->
+                </tbody>
+            </table>
+            <button class="btn btn-sm btn-primary mt-2" onclick="addScoreItem()">添加评分项</button>
+        </div>
+        
+        <!-- 操作按钮 -->
+        <div class="btn-group d-flex justify-content-center">
+            <button type="button" class="btn btn-secondary me-2" onclick="cancelEdit()">取消</button>
+            <button type="button" class="btn btn-primary" onclick="confirmEdit()">确定</button>
+        </div>
+    </div>
+
+    <!-- jQuery -->
+    <!-- <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> -->
+    <!-- Bootstrap JS -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script> -->
+    <!-- Summernote JS -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script> -->
+    
+    <script>
+        // 初始化图片数组，用于跟踪编辑器中的图片
+        var images = [];
+
+        $(document).ready(function() {
+            // 初始化Summernote编辑器
+            $("#summernote").summernote({
+             lang : 'zh-CN',// 语言
+            height : 300, // 高度
+            minHeight : 300, // 最小高度
+            placeholder : '请输入文章内容', // 提示
+            // summernote自定义配置
+            toolbar: [
+              ['operate', ['undo','redo']],
+              ['magic',['style']],
+              ['style', ['bold', 'italic', 'underline', 'clear']],
+              ['para', ['height','fontsize','ul', 'ol', 'paragraph']],
+              ['font', ['strikethrough', 'superscript', 'subscript']],
+              ['color', ['color']],
+              ['insert',['picture','video','link','table','hr']],
+              ['layout',['fullscreen','codeview']],
+            ],
+            callbacks : { // 回调函数
+                // 图片上传
+                onImageUpload: function(files) {
+                    console.log('开始上传图片，文件名:', files[0].name, '大小:', files[0].size, 'bytes');
+                    var data = new FormData();
+                    data.append("file", files[0]);
+                    data.append("type", "textarea");
+                    var xhr = new XMLHttpRequest();
+                    xhr.responseType = "text";
+                    xhr.open("POST", "/image/upload", true);
+                    // 添加JWT认证头
+                    xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('jwt_token')}`);
+                    console.log('设置请求头完成，准备发送上传请求');
+                    
+                    xhr.onload = function(e) {
+                        console.log('上传请求完成，状态码:', this.status);
+                        $(".text-danger").html("文件上传成功!");
+                        setTimeout(function () {
+                            $(".text-danger").html("");
+                            $(".text-danger").hide();
+                        }, 3000);
+
+                        if(this.status == 200||this.status == 304){
+                            console.log('解析服务器响应');
+                            var json=eval("("+this.responseText+")");
+                            if (json.status==200) {
+                                console.log('图片上传成功，服务器返回路径:', json.path);
+                                var url = URL.createObjectURL(files[0]);
+                                $('#summernote').summernote('insertImage', url, function ($image) {
+                                    // 获取编辑器宽度和高度
+                                    var editorWidth = $('.note-editing-area').width();
+                                    var editorHeight = $('.note-editing-area').height();
+                                    console.log('编辑器宽度:', editorWidth, '高度:', editorHeight);
+                                    
+                                    // 计算图片的合适大小（长边不超过编辑器短边的80%）
+                                    var maxSize = Math.min(editorWidth, editorHeight) * 0.8;
+                                    console.log('最大允许图片大小:', maxSize);
+
+                                    // 设置图片样式
+                                    $image.css('max-width', maxSize + 'px');
+                                    $image.css('max-height', maxSize + 'px');
+                                    $image.css('width', 'auto');
+                                    $image.css('height', 'auto');
+                                    // $image.css('display', 'block');
+                                    $image.css('margin', '0 auto');
+                                    $image.css('padding', '10px');
+                                    $image.attr('src', json.path);
+                                    // 每次编辑器图片信息增加时，都要更新images数组；因为这些图片信息都已在后台服务器存储。加到images数组中，以便后续保存之前如果发现该图片被从编辑器删除，那么也可以做到能够提交该图片信息到后台服务器，从后台服务器删除该图片。
+                                    console.log('图片已插入编辑器，临时URL:', url, '最终路径:', json.path);
+                                    images.push(json.path);
+                                });
+                            } else {
+                                console.error('服务器返回错误状态:', json.status, '消息:', json.message);
+                            }
+                        }
+                    };
+                    xhr.onprogress = function (e) {
+                        console.log('上传进度:', (e.loaded / e.total * 100).toFixed(2) + '%');
+                        $(".text-danger").show();
+                        $(".text-danger").html("文件正在上传..");
+                    };
+                    xhr.onerror = function (e) {
+                        console.error('上传请求出错:', e);
+                        $(".text-danger").html("文件上传失败!");
+                    }
+                    xhr.send(data);
+                    console.log('上传请求已发送');
+                }
+
+            }
+        });
+            
+            // 页面加载时获取任务点数据
+            loadTaskData();
+        });
+        
+        /**
+         * 加载任务点数据
+         */
+        function loadTaskData() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const taskId = urlParams.get('task_id');
+            
+            if (taskId) {
+                fetch('/course_tasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+                    },
+                    body: JSON.stringify({
+                        request_type: 'get',
+                        request_data: {
+                            task_id: taskId
+                        }
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 200) {
+                        const task = data.data.task;
+                        document.getElementById('taskName').value = task.task_name;
+                        $('#summernote').summernote('code', task.description);
+                        
+                        // 加载评分点
+                        if (task.criterias && task.criterias.length > 0) {
+                            task.criterias.forEach(criteria => {
+                                addScoreItem(criteria.criteria_name, criteria.criteria_description);
+                            });
+                        }
+                    } else {
+                        alert(`获取任务点数据失败: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('获取任务点数据出错:', error);
+                    alert('获取任务点数据时发生错误');
+                });
+            }
+        }
+        
+        /**
+         * 添加评分项
+         * @param {string} itemName 评分项名称
+         * @param {number} itemDescript 评分项描述
+         */
+        function addScoreItem(itemName = '', itemDescript = "") {
+            const criteriaItemsContainer = document.getElementById('criteriaItems');
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><input type="text" class="form-control" value="${itemName}" placeholder="评分项名称"></td>
+                <td><input type="text" class="form-control" value="${itemDescript}" placeholder="评分项描述"></td>
+                <td><button class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">删除</button></td>
+            `;
+            
+            criteriaItemsContainer.appendChild(row);
+        }
+        
+        /**
+         * 确认编辑
+         */
+        function confirmEdit() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const taskId = urlParams.get('task_id');
+            
+            const taskName = document.getElementById('taskName').value;
+            const content = $('#summernote').summernote('code');
+            
+            // 收集评分项
+            const criteriaItems = [];
+            document.querySelectorAll('#criteriaItems tr').forEach(row => {
+                const inputs = row.querySelectorAll('input');
+                criteriaItems.push({
+                    criteria_name: inputs[0].value,
+                    criteria_description: inputs[1].value
+                });
+            });
+            
+            // 发送更新请求
+            fetch('/course_tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+                },
+                body: JSON.stringify({
+                    request_type: 'update',
+                    request_data: {
+                        task_id: taskId,
+                        task_name: taskName,
+                        content: content,
+                        criterias: criteriaItems
+                    }
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 200) {
+                    alert('任务点更新成功');
+                    window.close();
+                } else {
+                    alert(`更新任务点失败: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error('更新任务点出错:', error);
+                alert('更新任务点时发生错误');
+            });
+        }
+        
+        /**
+         * 取消编辑
+         */
+        function cancelEdit() {
+            if (confirm('确定要取消编辑吗？所有未保存的更改将会丢失。')) {
+                window.close();
+            }
+        }
+    </script>
+</body>
+</html>
