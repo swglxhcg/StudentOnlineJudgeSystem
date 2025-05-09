@@ -231,15 +231,15 @@ def dashboard():
         # 定义模板映射字典
         template_mapping = {
             'users': {
-                'template_file': 'www-html/users-container.template',
+                'template_file': 'www-html/templates/users-container.template',
                 'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
             },
             'systemsettings': {
-                'template_file': 'www-html/system-settings-container.template',
+                'template_file': 'www-html/templates/system-settings-container.template',
                 'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
             },
             'logview': {
-                'template_file': 'www-html/log-view-container.template',
+                'template_file': 'www-html/templates/log-view-container.template',
                 'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
             }
         }
@@ -1162,7 +1162,7 @@ def add_course_task(request_data):
         cursor.execute('SELECT id FROM course_tasks WHERE course_id = %s AND task_name = %s', (course_id, task_name))
         if cursor.fetchone():
             return jsonify({'status': 400,'message': '测试点已存在'}), 400
-        # 添加测试点
+        # 添加测试点 
         cursor.execute('INSERT INTO course_tasks (course_id, task_name) VALUES (%s, %s)', (course_id, task_name))
         conn.commit()
         return jsonify({'status': 200,'message': '测试点添加成功'}), 200
@@ -1329,6 +1329,134 @@ def update_course_task(request_data):
     finally:
         cursor.close()
         conn.close()
+
+###################################
+# 评分接口
+###################################
+@app.route('/score', methods=['POST', 'OPTIONS'])
+def score():
+    """
+    评分接口
+    参数: {request_type: 请求类型(teacher/student), request_data: 请求数据}
+    返回: {status: 状态码, message: 消息, data: 数据(可选)}
+    """
+    logger.info(f"收到评分请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    request_type = data.get('request_type')
+    request_data = data.get('request_data')
+    if not request_type or not isinstance(request_type, str):
+        return jsonify({'status': 422,'message': '缺少或无效的request_type参数'}), 422
+    if request_type!= 'update' and (not request_data or not isinstance(request_data, dict)):
+        return jsonify({'status': 422,'message': '缺少或无效的request_data参数'}), 422
+    if request_type == 'student':
+        # 更新评分
+        return update_student_score(request_data)
+    elif request_type == 'teacher':
+        # 获取评分
+        return update_teacher_score(request_data)
+    else:
+        return jsonify({'status': 400,'message': '无效的请求类型'}), 400
+
+def update_student_score(request_data):
+    """
+    更新评分
+    参数: request_data 包含评分组id、被评分组id、评分点id、分数的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    score_group_id = request_data.get('score_group_id')
+    scored_group_id = request_data.get('scored_group_id')
+    score_point_id = request_data.get('score_point_id')
+    score = request_data.get('score')
+    if not all([score_group_id, scored_group_id, score_point_id, score]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查评分组是否存在
+        cursor.execute('SELECT id FROM student_groups WHERE id = %s', (score_group_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '评分组不存在'}), 404
+        # 检查被评分组是否存在
+        cursor.execute('SELECT id FROM student_groups WHERE id = %s', (scored_group_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '被评分组不存在'}), 404
+        # 检查评分点是否存在
+        cursor.execute('SELECT id FROM task_criteria WHERE id = %s', (score_point_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '评分点不存在'}), 404
+        # 检查评分是否存在
+        cursor.execute('SELECT id FROM peer_evaluations WHERE evaluator_group_id = %s AND evaluated_group_id = %s AND criteria_id = %s', (score_group_id, scored_group_id, score_point_id))
+        if not cursor.fetchone():
+            logger.info(f"评分不存在，添加评分")
+            # 添加评分
+            cursor.execute('INSERT INTO peer_evaluations (evaluator_group_id, evaluated_group_id, criteria_id, score) VALUES (%s, %s, %s, %s)', (score_group_id, scored_group_id, score_point_id, score))
+        else:
+            logger.info(f"评分存在，更新评分")
+            # 更新评分
+            cursor.execute('UPDATE peer_evaluations SET score = %s WHERE evaluator_group_id = %s AND evaluated_group_id = %s AND criteria_id = %s', (score, score_group_id, scored_group_id, score_point_id))
+        conn.commit()
+        return jsonify({'status': 200,'message': '评分更新成功'}), 200
+    except Exception as e:
+        logger.error(f"更新评分出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def update_teacher_score(request_data):
+    """
+    获取评分
+    参数: request_data 包含评分组id、被评分组id、评分点id的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    scored_group_id = request_data.get('scored_group_id')
+    score_point_id = request_data.get('score_point_id')
+    score = request_data.get('score')
+    if not all([scored_group_id, score_point_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查被评分组是否存在
+        cursor.execute('SELECT id FROM student_groups WHERE id = %s', (scored_group_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '被评分组不存在'}), 404
+        # 检查评分点是否存在
+        cursor.execute('SELECT id FROM task_criteria WHERE id = %s', (score_point_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '评分点不存在'}), 404
+        # 获取评分
+        cursor.execute('SELECT criteria_id, score FROM teacher_evaluations WHERE criteria_id = %s', (score_point_id, ))
+        scores = cursor.fetchone()
+        if not scores:
+            # 添加评分
+            cursor.execute('INSERT INTO teacher_evaluations (evaluated_group_id, criteria_id, score) VALUES (%s, %s, %s)', (scored_group_id, score_point_id, score))
+            conn.commit()
+            return jsonify({'status': 200,'message': '评分成功', 'data': {'score': 0}}), 200
+        else:
+            # 更新评分
+            cursor.execute('UPDATE teacher_evaluations SET score = %s WHERE criteria_id = %s', (score, score_point_id))
+            conn.commit()
+            return jsonify({'status': 200,'message': '评分成功', 'data': {'score': scores['score']}}), 200
+    except Exception as e:
+        logger.error(f"获取评分出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 
 
 if __name__ == '__main__':
