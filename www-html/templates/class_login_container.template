@@ -48,8 +48,7 @@ $(document).ready(function() {
                 response.data.forEach(cls => {
                     buttonsHtml += `
                     <div class="col-md-3 col-sm-6">
-                        <div class="class-btn btn btn-light btn-block" 
-                             data-class-id="${cls.id}">
+                        <div class="class-btn btn btn-light btn-block"  data-class-id="${cls.id}">
                             <h4>${cls.name}</h4>
                             <p class="leader">组长: ${cls.leader_name}</p>
                         </div>

@@ -286,7 +286,7 @@
                     }
                 })
             }).then(response => response.json())
-           .then(data => {
+            .then(data => {
                 if (data.status === 200) {
                     alert('任务点创建成功');
                     // 重新加载任务点列表
@@ -295,10 +295,10 @@
                     alert(`创建任务点失败: ${data.message}`);
                 }
             })
-           .catch(error => {
+            .catch(error => {
                 console.error('创建任务点出错:', error);
                 alert('创建任务点时发生错误');
-           })
+            })
         }
     }
 
@@ -361,11 +361,11 @@
                 })
             }
         })
-       .catch(error => {
+        .catch(error => {
             console.error('加载任务点列表出错:', error);
             alert('加载任务点列表时发生错误');
-       })
-       .finally(() => {
+        })
+        .finally(() => {
             // 显示任务点列表
             document.getElementById('courseTasks').style.display = 'block';
         })

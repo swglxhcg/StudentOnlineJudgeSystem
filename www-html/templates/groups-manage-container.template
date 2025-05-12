@@ -307,7 +307,7 @@
                 console.error('删除小组出错:', error);
                 alert('删除小组时发生错误');
             })
-           .finally(() => {
+            .finally(() => {
                 // 刷新小组列表
                 loadGroups();
             })
