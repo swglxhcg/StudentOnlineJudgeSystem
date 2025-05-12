@@ -1518,7 +1518,49 @@ def dashboard():
     else:
         return jsonify({'status': 403,'message': '权限不足'}), 403
 
+@app.route('/class', methods=['GET'])
+def class_page():
+    """
+    课堂页面返回，如存在token参数则进行验证，并构建教师课堂页面；否则检查是否存在stuid参数，并构建学生课堂页面。
+    参数: token(可选)
+    返回: www目录下的class.html文件
+    """
+    token = request.args.get('token')
+    stuid = request.args.get('stuid')
+    page_html = ""
+    if token:
+        # 验证token
+        decoded_token = decode_token(token)
+        current_user = decoded_token['sub']
+        current_user = json.loads(current_user)
+        
+        if current_user.get('type') == 'teacher':
+            # 构建教师课堂页面
+            page_html = generate_teacher_class_page(current_user)
+        else:
+            return jsonify({'status': 403,'message': '权限不足'}), 403
+    elif stuid:
+        # 构建学生课堂页面
+        page_html = generate_student_class_page(stuid)
+    else:
+        return jsonify({'status': 400,'message': '缺少参数'}), 400
+    return page_html
 
+def generate_teacher_class_page(current_user):
+    """
+    构建教师课堂页面
+    参数: current_user(当前用户信息)
+    返回: 教师课堂页面HTML代码
+    """
+    return "<h1>教师课堂页面</h1>"
+
+def generate_student_class_page(stuid):
+    """
+    构建学生课堂页面
+    参数: stuid(学生学号)
+    返回: 学生课堂页面HTML代码
+    """
+    return f"<h1>学生课堂页面 - {stuid}</h1>"
 
 if __name__ == '__main__':
     app.run(debug=True,port=5010)
