@@ -138,9 +138,10 @@ def jwt_auth():
     """
     if request.method == 'OPTIONS':
         return jsonify({'status': 200,'message': 'OPTIONS请求成功'}), 200
-    token = request.json.get('token')
+    token = request.args.get('token') or (request.json and request.json.get('token'))
     if not token:
         return jsonify({'status': 401,'message': '缺少token参数'}), 401
+    logger.info(f"收到JWT认证请求，token: {token}")
     # 刷新token
     try:
         decoded_token = decode_token(token)
@@ -1318,10 +1319,12 @@ def class_login():
     for group in groups:
         options += f"""
         <div class="col-md-3 col-sm-6">
-            <div class="class-btn btn btn-light btn-block">
-                <h4>{group['group_name']}</h4>
-                <p class="leader">组长: {group['leader_name']}</p>
-            </div>
+            <a href="/class?stuid={group['id']}">
+                <div class="class-btn btn btn-light btn-block">
+                    <h4>{group['group_name']}</h4>
+                    <p class="leader">组长: {group['leader_name']}</p>
+                </div>
+            </a>
         </div>
         """
     # 将动态选项插入到HTML模板中
