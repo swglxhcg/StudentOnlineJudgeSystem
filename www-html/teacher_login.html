@@ -71,6 +71,25 @@
         // var API_BASE_URL = 'http://localhost:5000';
         // var API_BASE_URL = 'http://127.0.0.1:5000';
         var API_BASE_URL = '';
+
+        // 添加定时器，在token过期前自动刷新
+        setInterval(function() {
+            const token = localStorage.getItem('jwt_token');
+            if(token) {
+                $.ajax({
+                    url: API_BASE_URL + '/refresh',
+                    type: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    },
+                    success: function(response) {
+                        if(response.status === 200) {
+                            localStorage.setItem('jwt_token', response.access_token);
+                        }
+                    }
+                });
+            }
+        }, 30 * 60 * 1000); // 每30分钟检查一次
     
         $(document).ready(function() {
             // 检查是否已登录
@@ -78,8 +97,32 @@
                 // 根据用户类型跳转到不同页面
                 var userType = localStorage.getItem('user_type');
                 var token = localStorage.getItem('jwt_token');
-                if (userType === 'admin') {
-                    window.location.href = '/dashboard?token=' + encodeURIComponent(token);
+                // 发送ajax请求到/jwt_auth接口，验证token是否有效
+                $.ajax({
+                    url: API_BASE_URL + '/jwt_auth?token=' + encodeURIComponent(token),
+                    type: 'GET',
+                    async: false,  // 设置为同步请求
+                    success: function(response) {
+                        if (response.status !==200) {
+                            // token无效
+                            localStorage.removeItem('jwt_token');
+                            localStorage.removeItem('user_type');
+                            localStorage.removeItem('user_id');
+                            // 跳转到登录页面
+                            window.location.href = '/login';
+                            return;  // 阻止后续代码执行
+                        }
+                    },
+                    error: function() {
+                        // 处理请求错误情况
+                        localStorage.clear();
+                        window.location.href = '/login';
+                    }
+                });
+                // 如果URL有nextpage参数，则跳转到指定页面
+                var nextPage = new URLSearchParams(window.location.search).get('nextpage');
+                if (nextPage && nextPage === 'classing') {
+                    window.location.href = '/class?token=' + encodeURIComponent(token);
                 } else {
                     window.location.href = '/dashboard?token=' + encodeURIComponent(token);
                 }

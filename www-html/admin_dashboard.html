@@ -78,6 +78,22 @@
                 // 获取当前URL中的token参数
                 const urlParams = new URLSearchParams(window.location.search);
                 const token = urlParams.get('token');
+                // 发送AJAX请求到/jwt_auth接口，验证token
+                $.ajax({
+                    url: '/jwt_auth',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ token: token }),
+                    success: function(response) {
+                        if (response.status !==200) {
+                            // token无效，跳转到登录页面
+                            localStorage.removeItem('jwt_token');
+                            localStorage.removeItem('user_type');
+                            localStorage.removeItem('user_id');
+                            window.location.href = '/login';
+                        }
+                    }
+                })
                 // 构建带page和token参数的URL
                 let newUrl = window.location.pathname + '?page=' + encodeURIComponent(targetPage);
                 if (token) {

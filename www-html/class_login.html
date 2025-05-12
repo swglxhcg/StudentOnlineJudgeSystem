@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课堂登录预览</title>
+    <!-- 引入Bootstrap CSS -->
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入jQuery -->
+    <script src="script/jquery.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .class-btn {
+            margin: 10px;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+            height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .class-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .class-btn .leader {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <h3 class="text-center mb-4">请选择小组登录</h3>
+                <div class="text-center mb-3">
+                    <a href="/" class="btn btn-outline-secondary">返回首页</a>
+                </div>
+                <div class="row" id="class-buttons-container" style="display: flex; flex-wrap: wrap;">
+                    <!-- 静态示例按钮 -->
+                     <!--<|CHZT_REF_CLASS_BUTTONS|>-->
+                     <div class="col-md-3 col-sm-6">
+                        <div class="class-btn btn btn-light btn-block">
+                            <h4>教师登录</h4>
+                            <p class="leader">将会跳转到教师登录界面</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

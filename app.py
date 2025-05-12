@@ -22,7 +22,7 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 app.config['JWT_SECRET_KEY'] = 'chzt'  # 生产环境请使用更安全的密钥
 app.config['JWT_ALGORITHM'] = 'HS256'
-app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=2)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=5)
 jwt = JWTManager(app)
 
 # 数据库连接配置
@@ -42,6 +42,9 @@ def hash_password(password_md5, salt='random_salt'):
     """对MD5加密后的密码进行加盐哈希"""
     return hashlib.pbkdf2_hmac('sha256', password_md5.encode(), salt.encode(), 100000).hex()
 
+#======================== 功能API 路由 ==============================
+
+# 图片上传接口
 @app.route('/image/upload', methods=['POST'])
 @jwt_required()
 def upload_image():
@@ -125,210 +128,27 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@app.route('/', methods=['GET'])
-def index():
+# JWT认证接口
+@app.route('/jwt_auth', methods=['GET', 'OPTIONS'])
+def jwt_auth():
     """
-    首页接口
-    返回: www目录下的index.html文件
-    """
-    return app.send_static_file('index.html')
-
-@app.route('/teacher_login', methods=['GET'])
-def teacher_login():
-    """
-    教师登录页面返回
-    返回: www目录下的teacher_login.html文件
-    """
-    return app.send_static_file('teacher_login.html') 
-
-@app.route('/edit_task', methods=['GET'])
-def edit_task():
-    """
-    编辑任务页面返回
-    返回: www目录下的edit_task.html文件
-    """
-    token = request.args.get('token')
-    if not token:
-        return jsonify({'status': 401,'message': '缺少token参数'}), 401
-    decoded_token = decode_token(token)
-    current_user = decoded_token['sub']
-    current_user = json.loads(current_user)
-    if current_user.get('type') != 'admin' and current_user.get('type')!= 'teacher':
-        return jsonify({'status': 401,'message': '权限不足'}), 401
-    else:
-        return app.send_static_file('edit_task.html')
-
-@app.route('/<path:filename>', methods=['GET'])
-def static_html(filename):
-    """
-    静态HTML文件处理接口
-    参数: filename(URL路径)
-    返回: www目录下对应的静态文件(仅处理.html文件)
-    """
-    logger.info(f"收到静态文件请求: {filename}")
-    if not filename.endswith('.html'):
-        logger.info(f"静态文件请求: {filename} 不是HTML文件")
-        return app.send_static_file(filename)
-    logger.warning(f"静态文件请求: {filename} 是HTML文件")
-    return "Not Found", 404
-
-@app.route('/static/uploads/<path:filename>', methods=['GET'])
-def get_image_static_uploads(filename):
-    """
-    静态文件处理接口(图片)
-    参数: filename(URL路径)
-    返回: www目录下对应的静态文件(仅处理图片文件)
-    """
-    logger.info(f"收到静态文件请求: {filename}")
-    file_path = os.path.join(app.root_path, 'static', 'uploads', filename)
-    if not os.path.exists(file_path):
-        logger.warning(f"文件不存在: {file_path}")
-        return "Not Found", 404
-    
-    if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
-        logger.warning(f"不支持的文件类型: {filename}")
-        return "Not Found, only get images", 404
-    
-    logger.info(f"返回图片文件: {filename}")
-    return send_from_directory(os.path.join(app.root_path, 'static', 'uploads'), filename)
-
-@app.route('/dashboard', methods=['GET', 'OPTIONS'])
-def dashboard():
-    """
-    教师仪表盘接口
-    参数: {request_type: 请求类型(add/delete/update/search/get_all), request_data: 请求数据}
-    返回: {status: 状态码, message: 消息或数据}
+    JWT认证接口
+    参数: {token: JWT令牌}
+    返回: {status: 状态码, message: 消息, data: token数据(成功时)}
     """
     if request.method == 'OPTIONS':
-        return jsonify({'status': 200}), 200
-    
-    # 从URL参数获取token
-    token = request.args.get('token')
+        return jsonify({'status': 200,'message': 'OPTIONS请求成功'}), 200
+    token = request.json.get('token')
     if not token:
-        return jsonify({'status': 401, 'message': '缺少token参数'}), 401
-    logger.info(f"收到仪表盘请求，token: {token}")
-    decoded_token = decode_token(token)
-    logger.info(f"解码后的token: {decoded_token}")
-    # decoded_token = json.loads(decoded_token)
-    
-    # logger.info(f"解码后的token: {decoded_token}")
-    current_user = decoded_token['sub']
-    current_user = json.loads(current_user)
-    if current_user.get('type') == 'admin':
-        admin_dashboard_html_path = 'www-html/admin_dashboard.html'
-        # 获取url中的参数，判断仪表盘的页面
-        response_html_code = ""
-        # 判断url是否有参数page
-        page = ""
-        if not request.args.get('page'):
-            logger.warning("仪表盘请求: 缺少page参数")
-            page = 'users'
-            # from flask import redirect, url_for
-            # return redirect(url_for('dashboard', page='users', token=token))
-        else:
-            page = request.args.get('page')
-        
-        # 定义模板映射字典
-        template_mapping = {
-            'users': {
-                'template_file': 'www-html/templates/users-container.template',
-                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
-            },
-            'systemsettings': {
-                'template_file': 'www-html/templates/system-settings-container.template',
-                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
-            },
-            'logview': {
-                'template_file': 'www-html/templates/log-view-container.template',
-                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
-            }
-        }
-        
-        # 检查page参数是否有效
-        if page not in template_mapping:
-            logger.warning(f"仪表盘请求失败: 未知的page参数 - {page}")
-            return jsonify({'status': 400,'message': '未知的page参数'}), 400
-
-        # 读取模板和主页面内容
-        try:
-            with open(template_mapping[page]['template_file'], 'r', encoding='utf-8') as f:
-                template = f.read()
-            with open(admin_dashboard_html_path, 'r', encoding='utf-8') as f:
-                response_html_code = f.read()
-            
-            # 替换占位符
-            response_html_code = response_html_code.replace(
-                template_mapping[page]['placeholder'], 
-                template
-            )
-            return response_html_code, 200
-        except Exception as e:
-            logger.error(f"加载模板失败: {str(e)}")
-            return jsonify({'status': 500,'message': '加载模板失败'}), 500
-
-    elif current_user.get('type') == 'teacher':
-        template_mapping = {
-            'groups_manage': {
-                'show': True,
-                'show_text': '群组管理',
-                'template_file': 'www-html/templates/groups-manage-container.template',
-                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
-            },
-            'courses_manage': {
-                'show': True,
-                'show_text': '课程管理',
-                'template_file': 'www-html/templates/courses-manage-container.template',
-                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
-            },
-            'submissions_manage': {
-                'show': False,
-                'show_text': '',
-                'template_file': 'www-html/templates/submissions-manage-container.template',
-                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
-            },
-        }
-        teacher_dashboard_html_path = 'www-html/teacher_dashboard.html'
-        html_code_menu_items = ""
-        for i in template_mapping:
-            if not template_mapping[i]['show']:
-                continue
-            html_code_menu_items += f"""<li><a href="#" data-page="{i}">{template_mapping[i]['show_text']}</a></li>"""
-        # 获取url中的参数，判断仪表盘的页面
-        response_html_code = ""
-        # 判断url是否有参数page
-        page = ""
-        if not request.args.get('page'):
-            logger.warning("仪表盘请求: 缺少page参数")
-            page = list(template_mapping.keys())[0]
-            # from flask import redirect, url_for
-            # return redirect(url_for('dashboard', page='users', token=token))
-        else:
-            page = request.args.get('page')
-        # 检查page参数是否有效
-        if page not in template_mapping:
-            logger.warning(f"仪表盘请求失败: 未知的page参数 - {page}")
-            return jsonify({'status': 400,'message': '未知的page参数'}), 400
-        # 读取模板和主页面内容
-        try:
-            with open(template_mapping[page]['template_file'], 'r', encoding='utf-8') as f:
-                template = f.read()
-            with open(teacher_dashboard_html_path, 'r', encoding='utf-8') as f:
-                response_html_code = f.read()
-            # 替换占位符
-            response_html_code = response_html_code.replace(
-                template_mapping[page]['placeholder'],
-                template
-            )
-            response_html_code = response_html_code.replace(
-                '<!--<|CHZT_REF_MENU_ITEM|>-->',
-                html_code_menu_items
-            )
-            return response_html_code, 200
-        except Exception as e:
-            logger.error(f"加载模板失败: {str(e)}")
-            return jsonify({'status': 500,'message': '加载模板失败'}), 500
-    else:
-        return jsonify({'status': 403,'message': '权限不足'}), 403
+        return jsonify({'status': 401,'message': '缺少token参数'}), 401
+    # 刷新token
+    try:
+        decoded_token = decode_token(token)
+        logger.info(f"解码后的token: {decoded_token}")
+        return jsonify({'status': 200,'message': 'token有效','data': decoded_token}), 200
+    except Exception as e:
+        logger.error(f"token解码失败: {str(e)}")
+        return jsonify({'status': 401,'message': 'token无效'}), 401
 
 # 登录接口
 @app.route('/login', methods=['POST', 'OPTIONS'])
@@ -395,9 +215,9 @@ def login():
         cursor.close()
         conn.close()
 
-###################################
+#=============================
 # 用户管理接口
-###################################
+#=============================
 @app.route('/users', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def users():
@@ -629,9 +449,9 @@ def update_user_type(request_data):
         cursor.close()
         conn.close()
 
-###################################
+#=============================
 # 小组管理接口
-###################################
+#=============================
 @app.route('/groups', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def groups():
@@ -856,9 +676,9 @@ def delete_group(request_data):
         cursor.close()
         conn.close()
 
-###################################
+#=============================
 # 课程管理接口
-###################################
+#=============================
 @app.route('/courses', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def courses():
@@ -1060,9 +880,10 @@ def delete_course(request_data):
         cursor.close()
         conn.close()
 
-###################################
+
+#=============================
 # 测试点管理接口
-###################################
+#=============================
 @app.route('/course_tasks', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def course_tasks():
@@ -1330,9 +1151,9 @@ def update_course_task(request_data):
         cursor.close()
         conn.close()
 
-###################################
+#=============================
 # 评分接口
-###################################
+#=============================
 @app.route('/score', methods=['POST', 'OPTIONS'])
 def score():
     """
@@ -1456,6 +1277,246 @@ def update_teacher_score(request_data):
     finally:
         cursor.close()
         conn.close()
+
+
+#======================== 页面返回 路由 ==============================
+
+@app.route('/', methods=['GET'])
+def index():
+    """
+    首页接口
+    返回: www目录下的index.html文件
+    """
+    return app.send_static_file('index.html')
+
+@app.route('/teacher_login', methods=['GET'])
+def teacher_login():
+    """
+    教师登录页面返回
+    返回: www目录下的teacher_login.html文件
+    """
+    return app.send_static_file('teacher_login.html') 
+
+@app.route('/class_login', methods=['GET'])
+def class_login():
+    """
+    课堂登录页面
+    返回: 动态生成的课堂选择页面
+    """
+    # 加载文件class_login.html
+    with open(os.path.join(app.root_path,'www-html', 'class_login.html'), 'r', encoding='utf-8') as f:
+        html_content = f.read()
+    # 读取数据库的所有小组信息
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    cursor.execute("SELECT id, group_name, leader_name FROM student_groups")
+    groups = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    # 生成动态的小组选择选项
+    options = ""
+    for group in groups:
+        options += f"""
+        <div class="col-md-3 col-sm-6">
+            <div class="class-btn btn btn-light btn-block">
+                <h4>{group['group_name']}</h4>
+                <p class="leader">组长: {group['leader_name']}</p>
+            </div>
+        </div>
+        """
+    # 将动态选项插入到HTML模板中
+    html_content = html_content.replace("<!--<|CHZT_REF_CLASS_BUTTONS|>-->", options)
+    return html_content
+
+@app.route('/edit_task', methods=['GET'])
+def edit_task():
+    """
+    编辑任务页面返回
+    返回: www目录下的edit_task.html文件
+    """
+    token = request.args.get('token')
+    if not token:
+        return jsonify({'status': 401,'message': '缺少token参数'}), 401
+    decoded_token = decode_token(token)
+    current_user = decoded_token['sub']
+    current_user = json.loads(current_user)
+    if current_user.get('type') != 'admin' and current_user.get('type')!= 'teacher':
+        return jsonify({'status': 401,'message': '权限不足'}), 401
+    else:
+        return app.send_static_file('edit_task.html')
+
+@app.route('/<path:filename>', methods=['GET'])
+def static_html(filename):
+    """
+    静态HTML文件处理接口
+    参数: filename(URL路径)
+    返回: www目录下对应的静态文件(仅处理.html文件)
+    """
+    logger.info(f"收到静态文件请求: {filename}")
+    if not filename.endswith('.html'):
+        logger.info(f"静态文件请求: {filename} 不是HTML文件，正常返回")
+        return app.send_static_file(filename)
+    logger.warning(f"静态文件请求: {filename} 是HTML文件，返回404")
+    return "Not Found", 404
+
+@app.route('/static/uploads/<path:filename>', methods=['GET'])
+def get_image_static_uploads(filename):
+    """
+    静态文件处理接口(图片)
+    参数: filename(URL路径)
+    返回: www目录下对应的静态文件(仅处理图片文件)
+    """
+    logger.info(f"收到静态文件请求: {filename}")
+    file_path = os.path.join(app.root_path, 'static', 'uploads', filename)
+    if not os.path.exists(file_path):
+        logger.warning(f"文件不存在: {file_path}")
+        return "Not Found", 404
+    
+    if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+        logger.warning(f"不支持的文件类型: {filename}")
+        return "Not Found, only get images", 404
+    
+    logger.info(f"返回图片文件: {filename}")
+    return send_from_directory(os.path.join(app.root_path, 'static', 'uploads'), filename)
+
+@app.route('/dashboard', methods=['GET', 'OPTIONS'])
+def dashboard():
+    """
+    教师仪表盘接口
+    参数: {request_type: 请求类型(add/delete/update/search/get_all), request_data: 请求数据}
+    返回: {status: 状态码, message: 消息或数据}
+    """
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    
+    # 从URL参数获取token
+    token = request.args.get('token')
+    if not token:
+        return jsonify({'status': 401, 'message': '缺少token参数'}), 401
+    logger.info(f"收到仪表盘请求，token: {token}")
+    
+    decoded_token = decode_token(token)
+    logger.info(f"解码后的token: {decoded_token}")
+    # decoded_token = json.loads(decoded_token)
+    
+    # logger.info(f"解码后的token: {decoded_token}")
+    current_user = decoded_token['sub']
+    current_user = json.loads(current_user)
+    if current_user.get('type') == 'admin':
+        admin_dashboard_html_path = 'www-html/admin_dashboard.html'
+        # 获取url中的参数，判断仪表盘的页面
+        response_html_code = ""
+        # 判断url是否有参数page
+        page = ""
+        if not request.args.get('page'):
+            logger.warning("仪表盘请求: 缺少page参数")
+            page = 'users'
+            # from flask import redirect, url_for
+            # return redirect(url_for('dashboard', page='users', token=token))
+        else:
+            page = request.args.get('page')
+        
+        # 定义模板映射字典
+        template_mapping = {
+            'users': {
+                'template_file': 'www-html/templates/users-container.template',
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
+            },
+            'systemsettings': {
+                'template_file': 'www-html/templates/system-settings-container.template',
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
+            },
+            'logview': {
+                'template_file': 'www-html/templates/log-view-container.template',
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
+            }
+        }
+        
+        # 检查page参数是否有效
+        if page not in template_mapping:
+            logger.warning(f"仪表盘请求失败: 未知的page参数 - {page}")
+            return jsonify({'status': 400,'message': '未知的page参数'}), 400
+
+        # 读取模板和主页面内容
+        try:
+            with open(template_mapping[page]['template_file'], 'r', encoding='utf-8') as f:
+                template = f.read()
+            with open(admin_dashboard_html_path, 'r', encoding='utf-8') as f:
+                response_html_code = f.read()
+            
+            # 替换占位符
+            response_html_code = response_html_code.replace(
+                template_mapping[page]['placeholder'], 
+                template
+            )
+            return response_html_code, 200
+        except Exception as e:
+            logger.error(f"加载模板失败: {str(e)}")
+            return jsonify({'status': 500,'message': '加载模板失败'}), 500
+
+    elif current_user.get('type') == 'teacher':
+        template_mapping = {
+            'groups_manage': {
+                'show': True,
+                'show_text': '群组管理',
+                'template_file': 'www-html/templates/groups-manage-container.template',
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
+            },
+            'courses_manage': {
+                'show': True,
+                'show_text': '课程管理',
+                'template_file': 'www-html/templates/courses-manage-container.template',
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
+            },
+            'submissions_manage': {
+                'show': False,
+                'show_text': '',
+                'template_file': 'www-html/templates/submissions-manage-container.template',
+                'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
+            },
+        }
+        teacher_dashboard_html_path = 'www-html/teacher_dashboard.html'
+        html_code_menu_items = ""
+        for i in template_mapping:
+            if not template_mapping[i]['show']:
+                continue
+            html_code_menu_items += f"""<li><a href="#" data-page="{i}">{template_mapping[i]['show_text']}</a></li>"""
+        # 获取url中的参数，判断仪表盘的页面
+        response_html_code = ""
+        # 判断url是否有参数page
+        page = ""
+        if not request.args.get('page'):
+            logger.warning("仪表盘请求: 缺少page参数")
+            page = list(template_mapping.keys())[0]
+            # from flask import redirect, url_for
+            # return redirect(url_for('dashboard', page='users', token=token))
+        else:
+            page = request.args.get('page')
+        # 检查page参数是否有效
+        if page not in template_mapping:
+            logger.warning(f"仪表盘请求失败: 未知的page参数 - {page}")
+            return jsonify({'status': 400,'message': '未知的page参数'}), 400
+        # 读取模板和主页面内容
+        try:
+            with open(template_mapping[page]['template_file'], 'r', encoding='utf-8') as f:
+                template = f.read()
+            with open(teacher_dashboard_html_path, 'r', encoding='utf-8') as f:
+                response_html_code = f.read()
+            # 替换占位符
+            response_html_code = response_html_code.replace(
+                template_mapping[page]['placeholder'],
+                template
+            )
+            response_html_code = response_html_code.replace(
+                '<!--<|CHZT_REF_MENU_ITEM|>-->',
+                html_code_menu_items
+            )
+            return response_html_code, 200
+        except Exception as e:
+            logger.error(f"加载模板失败: {str(e)}")
+            return jsonify({'status': 500,'message': '加载模板失败'}), 500
+    else:
+        return jsonify({'status': 403,'message': '权限不足'}), 403
 
 
 

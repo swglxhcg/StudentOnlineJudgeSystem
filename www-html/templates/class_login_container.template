@@ -1,0 +1,72 @@
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <h3 class="text-center mb-4">请选择您的课堂</h3>
+            <div class="row" id="class-buttons-container">
+                <!-- 动态生成的课堂按钮将放在这里 -->
+                <!--<|CHZT_REF_CLASS_BUTTONS|>-->
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .class-btn {
+        margin: 10px;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+    }
+    .class-btn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    .class-btn .leader {
+        font-size: 0.9em;
+        color: #6c757d;
+    }
+</style>
+
+<script>
+$(document).ready(function() {
+    // 获取token参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    
+    // 获取课堂数据
+    $.ajax({
+        url: '/api/classes',
+        type: 'GET',
+        headers: {
+            'Authorization': 'Bearer ' + token
+        },
+        success: function(response) {
+            if(response.status === 200) {
+                // 生成课堂按钮
+                let buttonsHtml = '';
+                response.data.forEach(cls => {
+                    buttonsHtml += `
+                    <div class="col-md-3 col-sm-6">
+                        <div class="class-btn btn btn-light btn-block" 
+                             data-class-id="${cls.id}">
+                            <h4>${cls.name}</h4>
+                            <p class="leader">组长: ${cls.leader_name}</p>
+                        </div>
+                    </div>`;
+                });
+                
+                // 替换占位符
+                $('#class-buttons-container').html(buttonsHtml);
+                
+                // 绑定点击事件
+                $('.class-btn').click(function() {
+                    const classId = $(this).data('class-id');
+                    // 跳转到课堂详情页
+                    window.location.href = `/class_detail?class_id=${classId}&token=${token}`;
+                });
+            }
+        }
+    });
+});
+</script>
