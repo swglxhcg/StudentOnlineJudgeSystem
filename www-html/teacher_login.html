@@ -173,11 +173,12 @@
                             localStorage.setItem('jwt_token', response.message.token);
                             localStorage.setItem('user_id', response.message.user_id);
                             localStorage.setItem('user_type', response.message.user_type);
-                            
-                            // 根据用户类型跳转到不同仪表盘
-                            if (response.message.user_type === 'admin') {
-                                window.location.href = '/dashboard?token=' + encodeURIComponent(response.message.token);
-                            } else {
+
+                            // 寻找是否有nextpage参数
+                            var nextPage = new URLSearchParams(window.location.search).get('nextpage');
+                            if (nextPage && nextPage === 'classing') {
+                                window.location.href = '/class?token=' + encodeURIComponent(response.message.token);
+                            }else{
                                 window.location.href = '/dashboard?token=' + encodeURIComponent(response.message.token);
                             }
                         } else {
