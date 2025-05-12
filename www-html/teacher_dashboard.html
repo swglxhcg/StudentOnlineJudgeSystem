@@ -85,6 +85,18 @@
                 // 跳转到新URL
                 window.location.href = newUrl;
             });
+
+            // 为进入课堂按钮绑定点击事件
+            $('#enter-class').click(function(e) {
+                e.preventDefault();
+                // 获取当前URL中的token参数
+                const urlParams = new URLSearchParams(window.location.search);
+                const token = urlParams.get('token');
+                // 构建带token参数的URL
+                let newUrl = '/class?token=' + encodeURIComponent(token);
+                // 跳转到新URL
+                window.location.href = newUrl;
+            })
             
             // 退出登录按钮事件
             $('#logout-btn').click(function(e) {

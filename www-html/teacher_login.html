@@ -101,6 +101,9 @@
                 $.ajax({
                     url: API_BASE_URL + '/jwt_auth?token=' + encodeURIComponent(token),
                     type: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     async: false,  // 设置为同步请求
                     success: function(response) {
                         if (response.status !==200) {
@@ -109,14 +112,20 @@
                             localStorage.removeItem('user_type');
                             localStorage.removeItem('user_id');
                             // 跳转到登录页面
-                            window.location.href = '/login';
+                            window.location.href = '/teacher_login';
                             return;  // 阻止后续代码执行
                         }
                     },
-                    error: function() {
-                        // 处理请求错误情况
+                    error: function(xhr) {
+                        // 添加更详细的错误处理
+                        if(xhr.status === 400) {
+                            alert('Token格式无效，请重新登录');
+                        } else {
+                            alert('认证服务不可用');
+                        }
                         localStorage.clear();
-                        window.location.href = '/login';
+                        window.location.href = '/teacher_login';
+                        return;
                     }
                 });
                 // 如果URL有nextpage参数，则跳转到指定页面
