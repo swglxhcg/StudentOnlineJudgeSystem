@@ -89,3 +89,11 @@ CREATE TABLE IF NOT EXISTS task_descriptions (
     description LONGTEXT NOT NULL COMMENT '任务描述内容',
     FOREIGN KEY (task_id) REFERENCES course_tasks(id) ON DELETE CASCADE
 ) COMMENT '任务点描述表';
+
+-- 10. 运行时变量表
+CREATE TABLE IF NOT EXISTS runtime_variables (
+    id INT AUTO_INCREMENT PRIMARY KEY COMMENT '变量ID',
+    variable_name VARCHAR(50) NOT NULL UNIQUE COMMENT '变量名称',
+    variable_value TEXT COMMENT '变量值',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
+) COMMENT '运行时变量表';
