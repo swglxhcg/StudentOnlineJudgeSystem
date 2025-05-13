@@ -128,6 +128,60 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# 运行时变量设置接口
+@app.route('/set_var', methods=['POST'])
+def set_var():
+    """
+    设置运行时变量接口
+    参数: {name: 变量名, value: 变量值}
+    返回: {status: 状态码, message: 消息}
+    """
+    data = request.get_json()
+    name = data.get('name')
+    value = data.get('value')
+    if not name or not value:
+        return jsonify({'status': 400,'message': '缺少name或value参数'}), 400
+    logger.info(f"设置运行时变量: {name} = {value}")
+    # 操作数据库runtime_variables的variable_name和variable_value字段
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO runtime_variables (variable_name, variable_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE variable_value = %s', (name, value, value))
+        conn.commit()
+        return jsonify({'status': 200,'message': '变量设置成功'}), 200
+    except Exception as e:
+        logger.error(f"变量设置失败: {str(e)}")
+        return jsonify({'status': 500,'message': '变量设置失败'}), 500
+    finally:
+        if conn:
+            conn.close()
+
+# 当前课程号设置接口
+@app.route('/set_course_id', methods=['GET'])
+def set_course_id():
+    """
+    设置当前课程号接口
+    url参数: course_id
+    返回: {status: 状态码, message: 消息}
+    """
+    course_id = request.args.get('course_id')
+    if not course_id:
+        return jsonify({'status': 400,'message': '缺少course_id参数'}), 400
+    logger.info(f"设置当前课程号: {course_id}")
+    # 操作数据库runtime_variables的variable_name和variable_value字段
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO runtime_variables (variable_name, variable_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE variable_value = %s', ('CURRENT_CLASS_ID', course_id, course_id))
+        conn.commit()
+        return jsonify({'status': 200,'message': '课程号设置成功'}), 200
+    except Exception as e:
+        logger.error(f"课程号设置失败: {str(e)}")
+        return jsonify({'status': 500,'message': '课程号设置失败'}), 500
+    finally:
+        if conn:
+            conn.close()
+
 # JWT认证接口
 @app.route('/jwt_auth', methods=['GET', 'OPTIONS'])
 def jwt_auth():
@@ -1568,6 +1622,66 @@ def generate_teacher_class_page(current_user):
     参数: current_user(当前用户信息)
     返回: 教师课堂页面HTML代码
     """
+    html_content = ""
+    optinons = ""
+    script_content = """
+    <script>
+    $(document).ready(function() {
+        // 为课程按钮绑定点击事件
+        $('.course-btn').click(function(e) {
+            e.preventDefault();
+            var courseId = $(this).data('course-id');
+            
+            // 发送AJAX请求
+            $.ajax({
+                url: '/set_course_id?course_id=' + courseId,
+                type: 'GET',
+                success: function(response) {
+                    if(response.status === 200) {
+                        // 使用Bootstrap提示框显示成功消息
+                        $('body').append(`
+                            <div class="alert alert-success alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">
+                                ${response.message}
+                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                        `);
+                        
+                        // 3秒后自动关闭提示框
+                        setTimeout(function() {
+                            $('.alert').alert('close');
+                        }, 3000);
+                    } else {
+                        // 显示错误消息
+                        $('body').append(`
+                            <div class="alert alert-danger alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">
+                                ${response.message}
+                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                        `);
+                    }
+                },
+                error: function(xhr) {
+                    // 处理请求失败的情况
+                    $('body').append(`
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">
+                            请求失败: ${xhr.status} ${xhr.statusText}
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    `);
+                }
+            });
+        });
+    });
+    </script>
+    """
+    with open(os.path.join(app.root_path,'www-html', 'class_login.html'), 'r', encoding='utf-8') as f:
+        html_content = f.read()
     # 查询运行时变量表，是否存在variable_name=”CURRENT_CLASS_ID“，如果存在则查询返回variable_value，否则创建该条目
     conn = get_db_connection()
     cursor = conn.cursor(pymysql.cursors.DictCursor)
@@ -1577,13 +1691,32 @@ def generate_teacher_class_page(current_user):
         # 创建该条目
         cursor.execute("INSERT INTO runtime_variables (variable_name, variable_value) VALUES ('CURRENT_CLASS_ID', '1')")
         conn.commit()
-        current_class_id = 1
+        current_class_id = 0
     else:
         current_class_id = current_class_id['variable_value']
     cursor.close()
     conn.close()
-    
-    return "<h1>教师课堂页面</h1>"
+    # 读取所有courses的信息
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    cursor.execute("SELECT id, course_name FROM courses")
+    courses = cursor.fetchall()
+    for course in courses:
+        optinons += f"""
+                <div class="col-md-3 col-sm-6">
+            <a href="#" class="course-btn" data-course-id="{course['id']}">
+                <div class="class-btn btn btn-light btn-block">
+                    <h4>{course['course_name']}</h4>
+                </div>
+            </a>
+        </div>
+        """
+    cursor.close()
+    conn.close()
+    html_content = html_content.replace("<!--<|CHZT_REF_CLASS_BUTTONS|>-->", optinons)
+    html_content = html_content.replace("<!--<|CHZT_REF_CLASS_TITLE|>-->", "请选择课程")
+    html_content = html_content.replace("<!--<|CHZT_REF_SCRIPT|>-->", script_content)
+    return html_content
 
 def generate_student_class_page(stuid):
     """
