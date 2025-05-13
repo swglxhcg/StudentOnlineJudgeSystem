@@ -1327,8 +1327,19 @@ def class_login():
             </a>
         </div>
         """
+    options += """
+    <div class="col-md-3 col-sm-6">
+        <a href="/teacher_login?nextpage=classing">
+            <div class="class-btn btn btn-light btn-block">
+                <h4>教师登录</h4>
+                <p class="leader">将会跳转到教师登录界面</p>
+            </div>
+        </a>
+    </div>
+    """
     # 将动态选项插入到HTML模板中
     html_content = html_content.replace("<!--<|CHZT_REF_CLASS_BUTTONS|>-->", options)
+    html_content = html_content.replace("<!--<|CHZT_REF_CLASS_TITLE|>-->", "请选择小组登录")
     return html_content
 
 @app.route('/edit_task', methods=['GET'])
@@ -1531,6 +1542,8 @@ def class_page():
     token = request.args.get('token')
     stuid = request.args.get('stuid')
     page_html = ""
+    if token and stuid:
+        return jsonify({'status': 400,'message': '参数错误'}), 400
     if token:
         # 验证token
         decoded_token = decode_token(token)
@@ -1555,6 +1568,21 @@ def generate_teacher_class_page(current_user):
     参数: current_user(当前用户信息)
     返回: 教师课堂页面HTML代码
     """
+    # 查询运行时变量表，是否存在variable_name=”CURRENT_CLASS_ID“，如果存在则查询返回variable_value，否则创建该条目
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    cursor.execute("SELECT variable_value FROM runtime_variables WHERE variable_name = 'CURRENT_CLASS_ID'")
+    current_class_id = cursor.fetchone()
+    if not current_class_id:
+        # 创建该条目
+        cursor.execute("INSERT INTO runtime_variables (variable_name, variable_value) VALUES ('CURRENT_CLASS_ID', '1')")
+        conn.commit()
+        current_class_id = 1
+    else:
+        current_class_id = current_class_id['variable_value']
+    cursor.close()
+    conn.close()
+    
     return "<h1>教师课堂页面</h1>"
 
 def generate_student_class_page(stuid):
