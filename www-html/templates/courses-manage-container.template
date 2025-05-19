@@ -311,7 +311,7 @@
                 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
             },
             body: JSON.stringify({
-                request_type: 'get_all', // 获取所有任务点
+                request_type: 'get', // 获取所有任务点
                 request_data: {
                     course_id: courseId // 使用当前编辑的课程ID
                 }

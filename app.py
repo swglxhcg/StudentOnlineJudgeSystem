@@ -1088,35 +1088,37 @@ def get_course_task_info(request_data):
     # 验证请求数据
     if not request_data:
         return jsonify({'status': 400,'message': '请求数据为空'}), 400
-    task_id = request_data.get('task_id')
+    task_id = request_data.get('course_id')
     if not task_id:
         return jsonify({'status': 422,'message': '缺少task_id参数'}), 422
     try:
         conn = get_db_connection()
         cursor = conn.cursor(pymysql.cursors.DictCursor)
         # 获取测试点信息
-        cursor.execute('SELECT * FROM course_tasks WHERE id = %s', (task_id,))
-        task = cursor.fetchone()
-        if not task:
-            return jsonify({'status': 404,'message': '测试点不存在'}), 404
-        # 获取测试点对应的课程名字
-        cursor.execute('SELECT course_name FROM courses WHERE id = %s', (task['course_id'],))
-        course_name = cursor.fetchone()['course_name']
-        task['course_name'] = course_name
-        # 获取测试点的评分点信息task_criteria.criteria_name、task_criteria.criteria_description通过task_criteria.task_id
-        cursor.execute('SELECT criteria_name, criteria_description FROM task_criteria WHERE task_id = %s', (task_id,))
-        criteria = cursor.fetchall()
-        task['criterias'] = criteria
+        cursor.execute('SELECT * FROM course_tasks WHERE course_id = %s', (task_id,))
+        tasks = cursor.fetchall()
+        response_tasks = []
         
-        ### 获取测试点的内容信息task_descriptions.description通过task_descriptions.task_id
-        cursor.execute('SELECT description FROM task_descriptions WHERE task_id = %s', (task_id,))
-        description = cursor.fetchone()
-        task['description'] = description['description'] if description else ''
+        for task in tasks:
+            # 获取测试点对应的课程名字
+            cursor.execute('SELECT course_name FROM courses WHERE id = %s', (task['course_id'],))
+            course_name = cursor.fetchone()['course_name']
+            task['course_name'] = course_name
+            # 获取测试点的评分点信息task_criteria.criteria_name、task_criteria.criteria_description通过task_criteria.task_id
+            cursor.execute('SELECT criteria_name, criteria_description FROM task_criteria WHERE task_id = %s', (task_id,))
+            criteria = cursor.fetchall()
+            task['criterias'] = criteria
+            
+            ### 获取测试点的内容信息task_descriptions.description通过task_descriptions.task_id
+            cursor.execute('SELECT description FROM task_descriptions WHERE task_id = %s', (task_id,))
+            description = cursor.fetchone()
+            task['description'] = description['description'] if description else ''
+            response_tasks.append(task)
         return jsonify({
            'status': 200,
            'message': '获取测试点信息成功',
             'data': {
-                'task': task
+                'tasks': response_tasks
             }
         })
     except Exception as e:
