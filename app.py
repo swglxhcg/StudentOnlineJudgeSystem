@@ -1651,6 +1651,8 @@ def generate_teacher_class_page(current_user):
                         // 3秒后自动关闭提示框
                         setTimeout(function() {
                             $('.alert').alert('close');
+                            // 跳转到新页面
+                            
                         }, 3000);
                     } else {
                         // 显示错误消息
@@ -1691,7 +1693,7 @@ def generate_teacher_class_page(current_user):
         # 创建该条目
         cursor.execute("INSERT INTO runtime_variables (variable_name, variable_value) VALUES ('CURRENT_CLASS_ID', '1')")
         conn.commit()
-        current_class_id = 0
+        current_class_id = -1
     else:
         current_class_id = current_class_id['variable_value']
     cursor.close()
@@ -1702,6 +1704,17 @@ def generate_teacher_class_page(current_user):
     cursor.execute("SELECT id, course_name FROM courses")
     courses = cursor.fetchall()
     for course in courses:
+        if course['id'] == int(current_class_id):
+            optinons += f"""
+                <div class="col-md-3 col-sm-6">
+            <a href="#" class="course-btn" data-course-id="{course['id']}">
+                <div class="class-btn btn btn-primary btn-block">
+                    <h4>{course['course_name']}</h4>
+                </div>
+            </a>
+        </div>
+            """
+            continue
         optinons += f"""
                 <div class="col-md-3 col-sm-6">
             <a href="#" class="course-btn" data-course-id="{course['id']}">
