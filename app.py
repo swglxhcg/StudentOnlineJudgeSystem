@@ -1640,19 +1640,33 @@ def generate_teacher_class_page(current_user):
                 type: 'GET',
                 success: function(response) {
                     if(response.status === 200) {
+                        // 重置所有按钮为btn-light
+                        $('.course-btn').find('.btn').removeClass('btn-primary').addClass('btn-light');
+                        // 设置当前按钮为btn-primary
+                        $('.course-btn[data-course-id="' + courseId + '"]').find('.btn')
+                            .removeClass('btn-light')
+                            .addClass('btn-primary');
+                        
                         // 使用Bootstrap提示框显示成功消息
                         $('body').append(`
                             <div class="alert alert-success alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">
                                 ${response.message}
-                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <button type="button" class="close" onclick="$(this).closest('.alert').remove()"  data-dismiss="alert" aria-label="Close">
                                     <span aria-hidden="true">&times;</span>
                                 </button>
                             </div>
                         `);
                         
+                        
+                        
                         // 3秒后自动关闭提示框
                         setTimeout(function() {
-                            $('.alert').alert('close');
+                            // 方案1
+                            // $('body').on('click', '.alert .close', function() {
+                            //     $(this).closest('.alert').alert('close');
+                            // });
+                            // 方案2
+                            $('.alert').remove();
                             // 跳转到新页面
                             
                         }, 3000);
@@ -1661,7 +1675,7 @@ def generate_teacher_class_page(current_user):
                         $('body').append(`
                             <div class="alert alert-danger alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">
                                 ${response.message}
-                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <button type="button" class="close" onclick="$(this).closest('.alert').remove()"  data-dismiss="alert" aria-label="Close">
                                     <span aria-hidden="true">&times;</span>
                                 </button>
                             </div>
