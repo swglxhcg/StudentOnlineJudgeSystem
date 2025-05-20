@@ -989,6 +989,9 @@ def course_tasks():
     elif request_type == 'get_all':
         # 获取所有测试点信息
         return get_all_course_tasks()
+    elif request_type == 'getdetails':
+        # 获取课程对应的测试点信息
+        return get_details_tasks(request_data)
     else:
         return jsonify({'status': 400,'message': '无效的请求类型'}), 400
 
@@ -1120,6 +1123,52 @@ def get_course_task_info(request_data):
             'data': {
                 'tasks': response_tasks
             }
+        })
+    except Exception as e:
+        logger.error(f"获取测试点信息出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_details_tasks(request_data):
+    """
+    获取课程对应的测试点信息
+    参数: request_data 包含课程ID的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    task_id = request_data.get('task_id')
+    if not task_id:
+        return jsonify({'status': 422,'message': '缺少task_id参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取课程对应的测试点信息
+        cursor.execute('SELECT * FROM course_tasks WHERE id = %s', (task_id,))
+        task_get = cursor.fetchone()
+        if not task_get:
+            return jsonify({'status': 404,'message': '测试点不存在'}), 404
+        # 获取测试点名字
+        task_name = task_get['task_name']
+        # 获取测试点内容
+        cursor.execute('SELECT description FROM task_descriptions WHERE task_id = %s', (task_id,))
+        task_description = cursor.fetchone()
+        task_description = task_description['description'] if task_description else ''
+        # 获取测试点的评分点信息task_criteria.criteria_name、task_criteria.criteria_description通过task_criteria.task_id
+        cursor.execute('SELECT criteria_name, criteria_description FROM task_criteria WHERE task_id = %s', (task_id,))
+        task_criterias = cursor.fetchall()
+        response_task = {
+            'task_name': task_name,
+            'task_description': task_description,
+            'task_criterias': task_criterias
+        }
+        return jsonify({
+          'status': 200,
+          'message': '获取测试点信息成功',
+            'data': response_task
         })
     except Exception as e:
         logger.error(f"获取测试点信息出错: {str(e)}")
@@ -1656,9 +1705,6 @@ def generate_teacher_class_page(current_user):
                                 </button>
                             </div>
                         `);
-                        
-                        
-                        
                         // 3秒后自动关闭提示框
                         setTimeout(function() {
                             // 方案1
@@ -1694,6 +1740,18 @@ def generate_teacher_class_page(current_user):
                     `);
                 }
             });
+        });
+        
+        // 为进入课堂按钮绑定点击事件
+        $('#enter-class-btn').click(function(e) {
+            e.preventDefault();
+            // 获取当前URL中的token参数
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            // 构造URL，携带JWT令牌和身份信息userclass=teacher
+            var url = '/classing?token=' + encodeURIComponent(token) + '&userclass=teacher';
+            // 跳转到新页面
+            window.location.href = url;
         });
     });
     </script>
@@ -1742,6 +1800,18 @@ def generate_teacher_class_page(current_user):
         """
     cursor.close()
     conn.close()
+    more_button_html = """
+                <div class="text-center mb-3">
+                    <a href="#" class="btn btn-outline-secondary" id="enter-class-btn">进入课堂</a>
+                </div>
+    """
+    class_info_html = """
+    <div class="text-center mb-3">
+        <h6>所有学生登录后会自动进入课程</h6>
+    </div>
+    """
+    html_content = html_content.replace("<!--<|CHZT_REF_CLASS_INFO|>-->", class_info_html)
+    html_content = html_content.replace("<!--<|CHZT_REF_CLASS_MORE_BUTTON|>-->", more_button_html)
     html_content = html_content.replace("<!--<|CHZT_REF_CLASS_BUTTONS|>-->", optinons)
     html_content = html_content.replace("<!--<|CHZT_REF_CLASS_TITLE|>-->", "请选择课程")
     html_content = html_content.replace("<!--<|CHZT_REF_SCRIPT|>-->", script_content)

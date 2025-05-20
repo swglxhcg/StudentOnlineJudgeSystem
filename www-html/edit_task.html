@@ -190,7 +190,7 @@
                         'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
                     },
                     body: JSON.stringify({
-                        request_type: 'get',
+                        request_type: 'getdetails',
                         request_data: {
                             task_id: taskId
                         }
@@ -199,13 +199,14 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 200) {
-                        const task = data.data.task;
+                        // console.log('获取到的任务点数据:', data);
+                        const task = data.data;
                         document.getElementById('taskName').value = task.task_name;
                         $('#summernote').summernote('code', task.description);
                         
                         // 加载评分点
-                        if (task.criterias && task.criterias.length > 0) {
-                            task.criterias.forEach(criteria => {
+                        if (task.task_criterias && task.task_criterias.length > 0) {
+                            task.task_criterias.forEach(criteria => {
                                 addScoreItem(criteria.criteria_name, criteria.criteria_description);
                             });
                         }
