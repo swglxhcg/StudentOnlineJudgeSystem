@@ -202,7 +202,7 @@
                         // console.log('获取到的任务点数据:', data);
                         const task = data.data;
                         document.getElementById('taskName').value = task.task_name;
-                        $('#summernote').summernote('code', task.description);
+                        $('#summernote').summernote('code', task.task_description);
                         
                         // 加载评分点
                         if (task.task_criterias && task.task_criterias.length > 0) {
