@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>评价系统</title>
+    <!-- Bootstrap CSS -->
+    <link href="./css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* 自定义样式 */
+        .sidebar {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 1000;
+        }
+        .content-area {
+            margin-right: 120px; /* 为侧边栏留出空间 */
+            padding-left: 0; /* 去除左侧内边距 */
+            height: 100%;
+        }
+        .card.h-100 {
+            height: calc(100% - 60px); /* 减去header高度 */
+        }
+        html, body {
+            height: 100%;
+        }
+        .page {
+            display: none;
+        }
+        .page.active {
+            display: block;
+            height: 100% !important;
+        }
+        .shadow-end {
+            box-shadow: 5px 0 10px -3px rgba(0,0,0,0.1);
+        }
+        .list-group-item {
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0;  /* 去除外边距 */
+        }
+        .list-group-item:hover {
+            background-color: #f8f9fa;
+        }
+        .active-btn {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(0,123,255,0.5);
+            font-weight: bold;
+        }
+        .list-group-item.active-item {
+            background-color: #bed9ff;
+            border-left: 3px solid #0b62e6;
+            transform: translateX(3px);
+        }
+        .chzt-full-height{
+            height: 100%;
+        }
+        .chzt-dynamic-content{
+            background-color: aliceblue;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid content-area">
+        <!-- 内容区域 -->
+        <div id="homework-page" class="page active">
+            <div class="row g-0 chzt-full-height">  <!-- 去除行间距 -->
+                <!-- 左侧小组列表 (3列) -->
+                <div class="col-md-3">
+                    <div class="card shadow-end border-0 rounded-0 h-100">  <!-- 高度100% -->
+                        <div class="card-header bg-white px-3 py-3">  <!-- 减小header内边距 -->
+                            <h5 class="mb-0">小组列表</h5>
+                        </div>
+                        <div class="card-body p-0">  <!-- 去除body内边距 -->
+                            <div class="list-group list-group-flush" id="group-list">
+                                <!-- 小组卡片将通过JS动态加载 -->
+                                <div class="list-group-item list-group-item-action border-0 px-3 py-3">  <!-- 增大内边距 -->
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-bold fs-5">第一组</span>  <!-- 加大字体 -->
+                                        <span class="text-muted">组长: 张三</span>  <!-- 添加组长信息 -->
+                                        <span class="badge bg-success rounded-pill mt-2 align-self-start">已完成</span>
+                                    </div>
+                                </div>
+                                <div class="list-group-item list-group-item-action border-0 px-3 py-3">
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-bold fs-5">第二组</span>
+                                        <span class="text-muted">组长: 李四</span>
+                                        <span class="badge bg-warning rounded-pill mt-2 align-self-start">进行中</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 右侧内容区 (9列) -->
+                <div class="col-md-9">
+                    <div class="card border-0 h-100 rounded-0 chzt-dynamic-content">  <!-- 高度100% -->
+                        <div class="card-body p-0" id="homework-dynamic-content">  <!-- 去除内边距 -->
+                            <h4 class="text-muted m-3">请从左侧选择小组查看详情</h4>  <!-- 添加外边距 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="self-eval-page" class="page">
+            <div class="row g-0 chzt-full-height">
+                <!-- 左侧小组列表 (3列) -->
+                <div class="col-md-3">
+                    <div class="card shadow-end border-0 rounded-0 h-100">
+                        <div class="card-header bg-white px-3 py-3">
+                            <h5 class="mb-0">小组自评</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="list-group list-group-flush" id="self-eval-group-list">
+                                <!-- 班级整体情况按钮 -->
+                                <div class="list-group-item list-group-item-action border-0 px-3 py-3">
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-bold fs-5">班级整体情况</span>
+                                    </div>
+                                </div>
+                                <!-- 小组卡片将通过JS动态加载 -->
+                                <div class="list-group-item list-group-item-action border-0 px-3 py-3">
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-bold fs-5">第一组</span>
+                                        <span class="badge bg-success rounded-pill mt-2 align-self-start">已完成</span>
+                                    </div>
+                                </div>
+                                <div class="list-group-item list-group-item-action border-0 px-3 py-3">
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-bold fs-5">第二组</span>
+                                        <span class="badge bg-secondary rounded-pill mt-2 align-self-start">未完成</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 右侧内容区 (9列) -->
+                <div class="col-md-9">
+                    <div class="card border-0 h-100 rounded-0 chzt-dynamic-content ">
+                        <div class="card-body p-0" id="self-eval-dynamic-content">
+                            <h4 class="text-muted m-3">请从左侧选择查看详情</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="teacher-eval-page" class="page">
+            <h1>教师评价</h1>
+            <p>这里是教师评价的内容</p>
+        </div>
+    </div>
+
+    <!-- 垂直按钮组 -->
+    <div class="sidebar">
+        <div class="btn-group-vertical" role="group">
+            <button type="button" class="btn btn-primary" onclick="showPage('homework-page')">作业完成情况</button>
+            <button type="button" class="btn btn-secondary" onclick="showPage('self-eval-page')">小组自评情况</button>
+            <button type="button" class="btn btn-secondary" onclick="showPage('teacher-eval-page')">教师评价</button>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS 和 Popper.js -->
+    <script src="./js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        /**
+         * 显示指定页面并隐藏其他页面
+         * @param {string} pageId 要显示的页面ID
+         */
+        function showPage(pageId) {
+            // 隐藏所有页面
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // 显示选中的页面
+            const currentPage = document.getElementById(pageId);
+            currentPage.classList.add('active');
+            
+            // 更新按钮状态
+            const buttons = document.querySelectorAll('.sidebar .btn');
+            buttons.forEach(btn => {
+                // 定义页面标题映射
+                const pageTitles = {
+                    'homework-page': '作业完成情况',
+                    'self-eval-page': '小组自评情况', 
+                    'teacher-eval-page': '教师评价'
+                };
+                
+                if (btn.textContent.trim() === pageTitles[pageId]) {
+                    btn.classList.remove('btn-secondary');
+                    btn.classList.add('btn-primary');
+                } else {
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-secondary');
+                }
+            });
+
+            // 如果是小组自评页面，自动选中"班级整体情况"按钮
+            if(pageId === 'self-eval-page') {
+                const classOverviewBtn = document.querySelector('#self-eval-group-list .list-group-item:first-child');
+                if(classOverviewBtn) {
+                    // 移除所有active-item类
+                    document.querySelectorAll('#self-eval-group-list .list-group-item').forEach(item => {
+                        item.classList.remove('active-item');
+                    });
+                    // 添加active-item类
+                    classOverviewBtn.classList.add('active-item');
+                    // 手动触发点击事件
+                    classOverviewBtn.click();
+                }
+            }
+        }
+
+        // 添加小组卡片点击事件
+        document.addEventListener('DOMContentLoaded', function() {
+            const groupItems = document.querySelectorAll('.list-group-item');
+            groupItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    // 移除所有active-item类
+                    groupItems.forEach(i => i.classList.remove('active-item'));
+                    // 为当前点击项添加active-item类
+                    this.classList.add('active-item');
+                });
+            });
+            
+        });
+    </script>
+</body>
+</html>
