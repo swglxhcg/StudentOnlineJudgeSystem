@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS course_tasks (
     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
 ) COMMENT '课程任务点表';
 
--- 5. 任务点-小组提交表
+-- 5. 任务点-小组提交记录表
 CREATE TABLE IF NOT EXISTS task_submissions (
     id INT AUTO_INCREMENT PRIMARY KEY COMMENT '提交记录ID',
     task_id INT NOT NULL COMMENT '任务点ID',
