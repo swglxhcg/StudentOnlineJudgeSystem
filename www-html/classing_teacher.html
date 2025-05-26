@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>评价系统</title>
+    <!-- Bootstrap CSS -->
+    <link href="./css/bootstrap.min.css" rel="stylesheet">
+    <script src="/js/jquery.min.js"></script>
+    <style>
+        /* 自定义样式 */
+        .sidebar {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 1000;
+        }
+        .content-area {
+            margin-right: 120px; /* 为侧边栏留出空间 */
+            padding-left: 0; /* 去除左侧内边距 */
+            height: 100%;
+        }
+        .card.h-100 {
+            height: calc(100% - 60px); /* 减去header高度 */
+        }
+        html, body {
+            height: 100%;
+        }
+        .page {
+            display: none;
+        }
+        .page.active {
+            display: block;
+            height: 100% !important;
+        }
+        .shadow-end {
+            box-shadow: 5px 0 10px -3px rgba(0,0,0,0.1);
+        }
+        .list-group-item {
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0;  /* 去除外边距 */
+        }
+        .list-group-item:hover {
+            background-color: #f8f9fa;
+        }
+        .active-btn {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(0,123,255,0.5);
+            font-weight: bold;
+        }
+        .list-group-item.active-item {
+            background-color: #bed9ff;
+            border-left: 3px solid #0b62e6;
+            transform: translateX(3px);
+        }
+        .chzt-full-height{
+            height: 100%;
+        }
+        .chzt-dynamic-content{
+            background-color: aliceblue;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-2 border-bottom">
+        <div class="row align-items-center">
+            <div class="col">
+                <h3 class="mb-0" id="course_task_info">小组评价系统</h3>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary" id="select-task-btn">选择作业</button>
+            </div>
+            <div id="task-modal" class="modal fade" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">选择作业任务点</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body" id="task-buttons-container">
+                            <!-- 任务点按钮将在这里动态生成 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid content-area">
+        <!-- 内容区域 -->
+        <div id="homework-page" class="page active">
+            <div class="row g-0 chzt-full-height">  <!-- 去除行间距 -->
+                <!-- 左侧小组列表 (3列) -->
+                <div class="col-md-3">
+                    <div class="card shadow-end border-0 rounded-0 h-100">  <!-- 高度100% -->
+                        <div class="card-header bg-white px-3 py-3">  <!-- 减小header内边距 -->
+                            <h5 class="mb-0">小组列表</h5>
+                        </div>
+                        <div class="card-body p-0">  <!-- 去除body内边距 -->
+                            <div class="list-group list-group-flush" id="group-list">
+                                <!-- 小组卡片将通过JS动态加载 -->
+                                <!--{{GROUP_LIST_PLACEHOLDER}}-->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 右侧内容区 (9列) -->
+                <div class="col-md-9">
+                    <div class="card border-0 h-100 rounded-0 chzt-dynamic-content">  <!-- 高度100% -->
+                        <div class="card-body p-0" id="homework-dynamic-content">  <!-- 去除内边距 -->
+                            <h4 class="text-muted m-3">请从左侧选择小组查看详情</h4>  <!-- 添加外边距 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="self-eval-page" class="page">
+            <div class="row g-0 chzt-full-height">
+                <!-- 左侧小组列表 (3列) -->
+                <div class="col-md-3">
+                    <div class="card shadow-end border-0 rounded-0 h-100">
+                        <div class="card-header bg-white px-3 py-3">
+                            <h5 class="mb-0">小组自评</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="list-group list-group-flush" id="self-eval-group-list">
+                                <!-- 班级整体情况按钮 -->
+                                <div class="list-group-item list-group-item-action border-0 px-3 py-3">
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-bold fs-5">班级整体情况</span>
+                                    </div>
+                                </div>
+                                <!-- 小组卡片将通过JS动态加载 -->
+                                <div class="list-group-item list-group-item-action border-0 px-3 py-3">
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-bold fs-5">第一组</span>
+                                        <span class="badge bg-success rounded-pill mt-2 align-self-start">已完成</span>
+                                    </div>
+                                </div>
+                                <div class="list-group-item list-group-item-action border-0 px-3 py-3">
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-bold fs-5">第二组</span>
+                                        <span class="badge bg-secondary rounded-pill mt-2 align-self-start">未完成</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 右侧内容区 (9列) -->
+                <div class="col-md-9">
+                    <div class="card border-0 h-100 rounded-0 chzt-dynamic-content ">
+                        <div class="card-body p-0" id="self-eval-dynamic-content">
+                            <h4 class="text-muted m-3">请从左侧选择查看详情</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="teacher-eval-page" class="page">
+            <h1>教师评价</h1>
+            <p>这里是教师评价的内容</p>
+        </div>
+    </div>
+
+    <!-- 垂直按钮组 -->
+    <div class="sidebar">
+        <div class="btn-group-vertical" role="group">
+            <button type="button" class="btn btn-primary" onclick="showPage('homework-page')">作业完成情况</button>
+            <button type="button" class="btn btn-secondary" onclick="showPage('self-eval-page')">小组自评情况</button>
+            <button type="button" class="btn btn-secondary" onclick="showPage('teacher-eval-page')">教师评价</button>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS 和 Popper.js -->
+    <script src="./js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // 页面加载完成后自动显示第一个页面
+        document.addEventListener('DOMContentLoaded', function() {
+            showPage('homework-page');
+            let courseId = "";
+            let courseName = "";
+            let courseTaskId = "";
+            let courseTaskName = "";
+            // ajax获取课程名称，通过get_course_id接口获取课程id和名称
+            $.ajax({
+                url:'/get_course_id',
+                type:'GET',
+                contentType:'application/json',
+                headers: {
+                    'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                },
+                async:false,
+                success:function(response) {
+                    if(response.status === 200 && response.data) {
+                        courseId = response.data.course_id;
+                        courseName = response.data.course_name;
+                    }
+                },
+                error:function(xhr) {
+                    console.error('Error:', xhr.responseJSON?.message || xhr.statusText);
+                }
+            })
+            // 查看localstronge中是否有course_task_id
+            courseTaskId = localStorage.getItem('course_task_id');
+            if(courseTaskId || courseTaskId !== "") {
+                // ajax获取课程任务信息，通过get_course_task_info接口获取课程id和名称
+                $.ajax({
+                    url:'/get_course_task_info',
+                    type:'POST',
+                    contentType:'application/json',
+                    headers: {
+                        'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                    },
+                    async:false,
+                    data:JSON.stringify({
+                        course_task_id:courseTaskId
+                    }),
+                    success:function(response) {
+                        if(response.status === 200 && response.data) {
+                            courseTaskId = response.data.task.id;
+                            courseTaskName = response.data.task.task_name;
+                        }
+                    }
+                })
+            }else{
+                // 查询当前课程下的所有课程任务
+                $.ajax({
+                    url:'/get_course_task_list',
+                    type:'POST',
+                    contentType:'application/json',
+                    headers: {
+                        'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                    },
+                    data:JSON.stringify({
+                        course_id:courseId
+                    }),
+                    async:false,
+                    success:function(response) {
+                        if(response.status === 200 && response.data) {
+                            courseTaskId = response.data.tasks[0].id;
+                            courseTaskName = response.data.tasks[0].task_name;
+                            localStorage.setItem('course_task_id',courseTaskId);
+                            
+                        }
+                    }
+                })
+            }
+            // 动态修改课程任务信息
+            document.getElementById('course_task_info').innerHTML = courseName + ' - ' + courseTaskName;
+
+            // 选择作业按钮点击事件
+            $('#select-task-btn').click(function() {
+                // 获取当前课程ID
+                let courseId = localStorage.getItem('course_id');
+                if (!courseId || courseId === '' || courseId === 'undefined') {
+                    // 发送ajax请求获取课程ID
+                    $.ajax({
+                        url: '/get_course_id',
+                        type: 'GET',
+                        headers: {
+                            'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                        },
+                        success: function(response) {
+                            if(response.status === 200 && response.data) {
+                                localStorage.setItem('course_id', response.data.course_id);
+                                courseId = response.data.course_id;
+                            }
+                        },
+                        error: function(xhr) {
+                            console.error('获取课程ID失败:', xhr.responseText);
+                        }
+                    })
+                }
+                
+                // 发起AJAX请求获取任务点
+                $.ajax({
+                    url: '/get_course_task_list',
+                    type: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
+                    },
+                    data: JSON.stringify({course_id: localStorage.getItem('course_id')}),
+                    success: function(response) {
+                        if(response.status === 200 && response.data) {
+                            // 清空容器
+                            $('#task-buttons-container').empty();
+                            
+                            // 为每个任务点创建按钮
+                            response.data.tasks.forEach(task => {
+                                const btn = $(`<button class="btn btn-outline-primary m-2 task-btn" 
+                                            data-task-id="${task.id}">${task.task_name}</button>`);
+                                
+                                // 按钮点击事件
+                                btn.click(function() {
+                                    localStorage.setItem('course_task_id', task.id);
+                                    // 刷新标题
+                                    $('#course_task_info').text(`${courseName} - ${task.task_name}`);
+                                    $('#task-modal').modal('hide');
+                                });
+                                
+                                $('#task-buttons-container').append(btn);
+                            });
+                            
+                            // 显示模态框
+                            $('#task-modal').modal('show');
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('获取任务点失败:', xhr.responseText);
+                    }
+                });
+            });
+
+        });
+        /**
+         * 显示指定页面并隐藏其他页面
+         * @param {string} pageId 要显示的页面ID
+         */
+        function showPage(pageId) {
+            // 隐藏所有页面
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // 显示选中的页面
+            const currentPage = document.getElementById(pageId);
+            currentPage.classList.add('active');
+
+            // 根据页面ID执行不同的函数
+            switch(pageId) {
+                case 'homework-page':
+                    loadHomeworkPage();
+                    break;
+                case 'self-eval-page':
+                    loadSelfEvalPage();
+                    break;
+                case 'teacher-eval-page':
+                    loadTeacherEvalPage();
+                    break;
+            }
+            
+            // 更新按钮状态
+            const buttons = document.querySelectorAll('.sidebar .btn');
+            buttons.forEach(btn => {
+                // 定义页面标题映射
+                const pageTitles = {
+                    'homework-page': '作业完成情况',
+                    'self-eval-page': '小组自评情况', 
+                    'teacher-eval-page': '教师评价'
+                };
+                
+                if (btn.textContent.trim() === pageTitles[pageId]) {
+                    btn.classList.remove('btn-secondary');
+                    btn.classList.add('btn-primary');
+                } else {
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-secondary');
+                }
+            });
+
+            // 如果是小组自评页面，自动选中"班级整体情况"按钮
+            if(pageId === 'self-eval-page') {
+                const classOverviewBtn = document.querySelector('#self-eval-group-list .list-group-item:first-child');
+                if(classOverviewBtn) {
+                    // 移除所有active-item类
+                    document.querySelectorAll('#self-eval-group-list .list-group-item').forEach(item => {
+                        item.classList.remove('active-item');
+                    });
+                    // 添加active-item类
+                    classOverviewBtn.classList.add('active-item');
+                    // 手动触发点击事件
+                    classOverviewBtn.click();
+                }
+            }
+        }
+
+        // 作业完成情况页面加载函数
+        function loadHomeworkPage() {
+            // 显示加载状态
+            const groupList = document.getElementById('group-list');
+            groupList.innerHTML = '<div class="text-center py-3">加载中...</div>';
+            
+            // 发起AJAX请求获取小组数据
+            $.ajax({
+                url: '/groups',
+                type: 'POST',
+                contentType: 'application/json',
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
+                },
+                data: JSON.stringify({
+                    request_type: 'get_all'
+                }),
+                success: function(response) {
+                    if (response.status === 200 && response.data) {
+                        renderGroupList(response.data);
+                    } else {
+                        groupList.innerHTML = '<div class="text-danger py-3">加载失败: ' + (response.message || '未知错误') + '</div>';
+                    }
+                },
+                error: function(xhr) {
+                    groupList.innerHTML = '<div class="text-danger py-3">请求失败: ' + (xhr.responseJSON?.message || xhr.statusText) + '</div>';
+                }
+            });
+        }
+
+        /**
+         * 渲染小组列表
+         * @param {Array} groups 小组数据数组
+         */
+        function renderGroupList(groups) {
+            const groupList = document.getElementById('group-list');
+            let html = '';
+            
+            groups.forEach(group => {
+                // 进行ajax请求查task_submissions表中是否有该小组的作业提交记录
+                $.ajax({
+                    url: '/homework',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    headers: {
+                        'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                    },
+                    data: JSON.stringify({
+                        request_type: 'get',
+                        request_data: {
+                            group_id: group.id
+                        }
+                    }),
+                    async: false,
+                    success: function(response) {
+                        if (response.status === 200 && response.data) {
+                            if(response.data.length === 0) {
+                                group.status = 'uncompleted';
+                            }
+                        } else {
+                            group.status = 'uncompleted';
+                        }
+                    },
+                    error: function(xhr) {
+                        group.status = 'uncompleted';
+                    }
+                })
+                const badgeClass = group.status === 'completed' ? 'bg-success' : 'bg-secondary';
+                const statusText = group.status === 'completed' ? '已完成' : '未完成';
+                
+                html += `
+                <div class="list-group-item list-group-item-action border-0 px-3 py-3" data-group-id="${group.group_id}">
+                    <div class="d-flex flex-column">
+                        <span class="fw-bold fs-5">${group.group_name}</span>
+                        <span class="text-muted">组长: ${group.leader_name}</span>
+                        <span class="badge ${badgeClass} rounded-pill mt-2 align-self-start">
+                            ${statusText}
+                        </span>
+                    </div>
+                </div>`;
+            });
+            
+            groupList.innerHTML = html;
+            
+            // 重新绑定点击事件
+            document.querySelectorAll('#group-list .list-group-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    // 移除所有active-item类
+                    document.querySelectorAll('#group-list .list-group-item').forEach(i => {
+                        i.classList.remove('active-item');
+                    });
+                    // 为当前点击项添加active-item类
+                    this.classList.add('active-item');
+                    // TODO: 加载小组详情
+                });
+            });
+        }
+
+        // 小组自评情况页面加载函数
+        function loadSelfEvalPage() {
+            // TODO: 实现小组自评情况页面的加载逻辑
+            console.log('加载小组自评情况页面');
+        }
+
+        // 教师评价页面加载函数
+        function loadTeacherEvalPage() {
+            // TODO: 实现教师评价页面的加载逻辑
+            console.log('加载教师评价页面');
+        }
+
+        // 添加小组卡片点击事件
+        document.addEventListener('DOMContentLoaded', function() {
+            const groupItems = document.querySelectorAll('.list-group-item');
+            groupItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    // 移除所有active-item类
+                    groupItems.forEach(i => i.classList.remove('active-item'));
+                    // 为当前点击项添加active-item类
+                    this.classList.add('active-item');
+                });
+            });
+            
+        });
+    </script>
+</body>
+</html>

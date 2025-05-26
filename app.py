@@ -22,7 +22,7 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 app.config['JWT_SECRET_KEY'] = 'chzt'  # 生产环境请使用更安全的密钥
 app.config['JWT_ALGORITHM'] = 'HS256'
-app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=5)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=365)  # 刷新令牌有效期
 jwt = JWTManager(app)
 
 # 数据库连接配置
@@ -174,6 +174,18 @@ def set_course_id():
         cursor = conn.cursor()
         cursor.execute('INSERT INTO runtime_variables (variable_name, variable_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE variable_value = %s', ('CURRENT_CLASS_ID', course_id, course_id))
         conn.commit()
+        # 查询课程号所对应的课程名称
+        cursor.execute('SELECT course_name FROM courses WHERE id = %s', (course_id,))
+        result = cursor.fetchone()
+        if result:
+            course_name = result[0]
+            logger.info(f"课程名称: {course_name}")
+        else:
+            logger.info("课程名称不存在")
+            course_name = ""
+        # 将课程名称写入新的变量中
+        cursor.execute('INSERT INTO runtime_variables (variable_name, variable_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE variable_value = %s', ('CURRENT_CLASS_NAME', course_name, course_name))
+        conn.commit()
         return jsonify({'status': 200,'message': '课程号设置成功'}), 200
     except Exception as e:
         logger.error(f"课程号设置失败: {str(e)}")
@@ -181,6 +193,72 @@ def set_course_id():
     finally:
         if conn:
             conn.close()
+
+# 运行时变量获取接口
+@app.route('/get_var', methods=['GET'])
+def get_var():
+    """
+    获取运行时变量接口
+    url参数: name
+    返回: {status: 状态码, message: 消息, value: 变量值}
+    """
+    name = request.args.get('name')
+    if not name:
+        return jsonify({'status': 400,'message': '缺少name参数'}), 400
+    logger.info(f"获取运行时变量: {name}")
+    # 操作数据库runtime_variables的variable_name和variable_value字段
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT variable_value FROM runtime_variables WHERE variable_name = %s', (name,))
+        result = cursor.fetchone()
+        if result:
+            return jsonify({'status': 200,'message': '变量获取成功','value': result[0]}), 200
+        else:
+            return jsonify({'status': 404,'message': '变量不存在'}), 404
+    except Exception as e:
+        logger.error(f"变量获取失败: {str(e)}")
+        return jsonify({'status': 500,'message': '变量获取失败'}), 500
+    finally:
+        if conn:
+            conn.close()
+
+# 当前课程号及课程名称获取接口
+@app.route('/get_course_id', methods=['GET'])
+def get_course_id():
+    """
+    获取当前课程号及课程名称接口
+    返回: {status: 状态码, message: 消息, course_id: 课程号, course_name: 课程名称}
+    """
+    logger.info("获取当前课程号及课程名称")
+    # 操作数据库runtime_variables的variable_name和variable_value字段
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT variable_value FROM runtime_variables WHERE variable_name = %s', ('CURRENT_CLASS_ID',))
+        result = cursor.fetchone()
+        if result:
+            course_id = result[0]
+            logger.info(f"课程号: {course_id}")
+            # 查询课程名称
+            cursor.execute('SELECT course_name FROM courses WHERE id = %s', (course_id,))
+            result = cursor.fetchone()
+            if result:
+                course_name = result[0]
+                logger.info(f"课程名称: {course_name}")
+            else:
+                logger.info("课程名称不存在")
+                course_name = ""
+            return jsonify({'status': 200,'message': '课程号获取成功','data': {'course_id': course_id,'course_name': course_name}}), 200
+        else:
+            return jsonify({'status': 404,'message': '课程号不存在'}), 404
+    except Exception as e:
+        logger.error(f"课程号获取失败: {str(e)}")
+        return jsonify({'status': 500,'message': '课程号获取失败'}), 500
+    finally:
+        if conn:
+            conn.close()
+
 
 # JWT认证接口
 @app.route('/jwt_auth', methods=['GET', 'OPTIONS'])
@@ -1257,6 +1335,86 @@ def update_course_task(request_data):
         cursor.close()
         conn.close()
 
+# 单独的接口，用于获取测试点的名称和id
+@app.route('/get_course_task_info', methods=['POST', 'OPTIONS'])
+def get_tasks():
+    """
+    获取测试点的名称和id
+    参数: course_task_id 测试点id
+    返回: {status: 状态码, message: 消息, data: 数据(可选)}
+    """
+    logger.info(f"收到获取测试点名称和id请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    course_task_id = data.get('course_task_id')
+    if not course_task_id:
+        return jsonify({'status': 422,'message': '缺少course_task_id参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取测试点信息
+        cursor.execute('SELECT id, task_name FROM course_tasks WHERE id = %s', (course_task_id,))
+        task = cursor.fetchone()
+        if not task:
+            return jsonify({'status': 404,'message': '测试点不存在'}), 404
+        return jsonify({
+          'status': 200,
+          'message': '获取测试点名称和id成功',
+            'data': {
+                'task': task
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取测试点名称和id出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# 单独的接口，用于通过课程id查询所有测试点的名称和id
+@app.route('/get_course_task_list', methods=['POST', 'OPTIONS'])
+def get_course_task_list():
+    """
+    获取课程对应的测试点信息
+    参数: course_id 课程id
+    返回: {status: 状态码, message: 消息, data: 数据(可选)}
+    """
+    logger.info(f"收到获取课程对应的测试点信息请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    course_id = data.get('course_id')
+    if not course_id:
+        return jsonify({'status': 422,'message': '缺少course_id参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取课程对应的测试点信息
+        cursor.execute('SELECT id, task_name FROM course_tasks WHERE course_id = %s', (course_id,))
+        tasks = cursor.fetchall()
+        return jsonify({
+         'status': 200,
+         'message': '获取课程对应的测试点信息成功',
+            'data': {
+                'tasks': tasks
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取课程对应的测试点信息出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 #=============================
 # 评分接口
 #=============================
@@ -1384,8 +1542,137 @@ def update_teacher_score(request_data):
         cursor.close()
         conn.close()
 
+#=============================
+# 作业相关接口
+#=============================
+@app.route('/homework', methods=['POST', 'OPTIONS'])
+def homework():
+    """
+    作业相关接口
+    参数: {request_type: 请求类型(submit/get), request_data: 请求数据}
+    返回: {status: 状态码, message: 消息, data: 数据(可选)}
+    """
+    logger.info(f"收到作业相关请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    request_type = data.get('request_type')
+    request_data = data.get('request_data')
+    if not request_type or not isinstance(request_type, str):
+        return jsonify({'status': 422,'message': '缺少或无效的request_type参数'}), 422
+    if request_type!= 'get' and (not request_data or not isinstance(request_data, dict)):
+        return jsonify({'status': 422,'message': '缺少或无效的request_data参数'}), 422
+    if request_type == 'submit':
+        # 提交作业
+        return submit_homework(request_data)
+    elif request_type == 'get':
+        # 获取作业
+        return get_homework(request_data)
+    else:
+        return jsonify({'status': 400,'message': '无效的请求类型'}), 400
+
+def submit_homework(request_data):
+    """
+    添加作业
+    参数: request_data 包含作业id、作业内容、提交小组id的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    homework_id = request_data.get('homework_id')
+    homework_content = request_data.get('homework_content')
+    group_id = request_data.get('group_id')
+    if not all([homework_id, homework_content, group_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查作业是否存在
+        cursor.execute('SELECT id FROM course_tasks WHERE id = %s', (homework_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '作业不存在'}), 404
+        # 检查小组是否存在
+        cursor.execute('SELECT id FROM student_groups WHERE id = %s', (group_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '小组不存在'}), 404
+        # 检查作业是否已提交
+        cursor.execute('SELECT * FROM task_submissions WHERE task_id = %s AND group_id = %s', (homework_id, group_id))
+        if cursor.fetchone():
+            # 更新作业
+            cursor.execute('UPDATE task_submissions SET content = %s WHERE task_id = %s AND group_id = %s', (homework_content, homework_id, group_id))
+        else:
+            # 添加作业
+            cursor.execute('INSERT INTO task_submissions (task_id, content, group_id) VALUES (%s, %s, %s)', (homework_id, homework_content, group_id))
+        conn.commit()
+        return jsonify({'status': 200,'message': '作业提交成功'}), 200
+    except Exception as e:
+        logger.error(f"提交作业出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_homework(request_data):
+    """
+    获取作业
+    参数: request_data 包含作业id、提交小组id的字典
+    返回: JSON响应，包含状态码和消息
+    """
+    # 验证请求数据
+    if not request_data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    homework_id = request_data.get('homework_id')
+    group_id = request_data.get('group_id')
+    if not all([homework_id, group_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # 检查作业是否存在
+        cursor.execute('SELECT id FROM course_tasks WHERE id = %s', (homework_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '作业不存在'}), 404
+        # 检查小组是否存在
+        cursor.execute('SELECT id FROM student_groups WHERE id = %s', (group_id,))
+        if not cursor.fetchone():
+            return jsonify({'status': 404,'message': '小组不存在'}), 404
+        # 获取作业
+        cursor.execute('SELECT content FROM task_submissions WHERE task_id = %s AND group_id = %s', (homework_id, group_id))
+        homework_content = ""
+        homework = cursor.fetchone()
+        if not homework:
+            return jsonify({'status': 200,'message': '作业未提交', 'data': {'homework_content': homework_content}}), 200
+        else:
+            homework_content = homework['content']
+            return jsonify({'status': 200,'message': '作业获取成功', 'data': {'homework_content': homework_content}}), 200
+    except Exception as e:
+        logger.error(f"获取作业出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 #======================== 页面返回 路由 ==============================
+
+@app.route('/fix', methods=['GET'])
+def fix():
+    """
+    修复功能
+    返回: 动态创建的网页js代码，用来清除所有的本地存储数据
+    """
+    html_content = """
+    <script>
+        localStorage.clear();
+        alert('修复完成，页面将自动刷新');
+        window.location.href = '/';
+    </script>
+    """
+    return html_content
 
 @app.route('/', methods=['GET'])
 def index():
@@ -1824,6 +2111,26 @@ def generate_student_class_page(stuid):
     返回: 学生课堂页面HTML代码
     """
     return f"<h1>学生课堂页面 - {stuid}</h1>"
+
+@app.route('/classing', methods=['GET'])
+def classing():
+    """
+    课堂页面返回，如存在userclass=teacher参数则构建教师课堂页面；否则构建学生课堂页面。
+    参数: userclass(可选)
+    返回: www目录下的classing.html文件
+    """
+    userclass = request.args.get('userclass')
+    if userclass == 'teacher':
+        return app.send_static_file('classing_teacher.html')
+    elif userclass == 'student':
+        return app.send_static_file('classing_student.html')
+    else:
+        html_content = """
+            <h1>出现错误，请检查参数</h1>
+            <a href="/">返回首页</a>
+        """
+        return html_content
+
 
 if __name__ == '__main__':
     app.run(debug=True,port=5010)
