@@ -85,6 +85,9 @@
                     </div>
                 </div>
             </div>
+            <div class="col-auto">
+                <button class="btn btn-secondary" id="go-index-btn">返回首页</button>
+            </div>
         </div>
     </div>
 
@@ -304,6 +307,8 @@
                                     localStorage.setItem('course_task_id', task.id);
                                     // 刷新标题
                                     $('#course_task_info').text(`${courseName} - ${task.task_name}`);
+                                    // 调用showPage函数显示作业完成情况页面
+                                    showPage('homework-page');
                                     $('#task-modal').modal('hide');
                                 });
                                 
@@ -318,8 +323,15 @@
                         console.error('获取任务点失败:', xhr.responseText);
                     }
                 });
+                
             });
 
+            // 返回首页按钮点击事件，提供确认弹窗
+            $('#go-index-btn').click(function() {
+                if (confirm('是否确认返回首页？')) {
+                    window.location.href = '/';
+                }
+            });
         });
         /**
          * 显示指定页面并隐藏其他页面
@@ -420,6 +432,7 @@
         function renderGroupList(groups) {
             const groupList = document.getElementById('group-list');
             let html = '';
+            let homework_content = '';
             
             groups.forEach(group => {
                 // 进行ajax请求查task_submissions表中是否有该小组的作业提交记录
@@ -433,7 +446,8 @@
                     data: JSON.stringify({
                         request_type: 'get',
                         request_data: {
-                            group_id: group.id
+                            group_id: group.id,
+                            homework_id: localStorage.getItem('course_task_id')
                         }
                     }),
                     async: false,
@@ -441,6 +455,13 @@
                         if (response.status === 200 && response.data) {
                             if(response.data.length === 0) {
                                 group.status = 'uncompleted';
+                            }else if(response.data.length > 0) {
+                                if(response.data.homework_content && response.data.homework_content !== '') {
+                                    homework_content = response.data.homework_content;
+                                    group.status = 'completed';
+                                }else{
+                                    group.status = 'uncompleted';
+                                }
                             }
                         } else {
                             group.status = 'uncompleted';
@@ -454,7 +475,7 @@
                 const statusText = group.status === 'completed' ? '已完成' : '未完成';
                 
                 html += `
-                <div class="list-group-item list-group-item-action border-0 px-3 py-3" data-group-id="${group.group_id}">
+                <div class="list-group-item list-group-item-action border-0 px-3 py-3" data-group-id="${group.id}">
                     <div class="d-flex flex-column">
                         <span class="fw-bold fs-5">${group.group_name}</span>
                         <span class="text-muted">组长: ${group.leader_name}</span>
@@ -464,8 +485,55 @@
                     </div>
                 </div>`;
             });
-            
             groupList.innerHTML = html;
+
+            // 添加小组按钮点击事件处理
+            $(document).on('click', '.list-group-item[data-group-id]', function() {
+                const groupId = $(this).data('group-id');
+                console.log('点击的小组ID:', groupId);
+                // 更新homework-dynamic-content内容
+                const dynamicContent = document.getElementById('homework-dynamic-content');
+                dynamicContent.innerHTML = `<div class="text-center py-3">加载中...</div>`;
+
+                if(homework_content !== '') {
+                    dynamicContent.innerHTML = `<div class="text-center py-3">${homework_content}</div>`;
+                }else{
+                    // 发起AJAX请求获取作业内容
+                    $.ajax({
+                        url: '/homework',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        headers: {
+                            'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                        },
+                        data: JSON.stringify({
+                            request_type: 'get',
+                            request_data: {
+                                group_id: groupId,
+                                homework_id: localStorage.getItem('course_task_id')
+                            }
+                        }),
+                        success: function(response) {
+                            if (response.status === 200 && response.data) {
+                                if(response.message !=="作业未提交" ) {
+                                    if(response.data.homework_content && response.data.homework_content!== '') {
+                                        dynamicContent.innerHTML = `<div class="text-center py-3">${response.data.homework_content}</div>`;
+                                    }else{
+                                        dynamicContent.innerHTML = `<div class="text-danger py-3"></div>`;
+                                    }
+                                }else{
+                                    dynamicContent.innerHTML = `<div class="text-danger py-3">${response.message}</div>`;
+                                }
+                            }else{
+                                dynamicContent.innerHTML = `<div class="text-danger py-3">加载失败:'+ (response.message || '未知错误') + '</div>`;
+                            }
+                        },
+                        error: function(xhr) {
+                            dynamicContent.innerHTML = `<div class="text-danger py-3">请求失败:'+ (xhr.responseJSON?.message || xhr.statusText) + '</div>`;
+                        }
+                    })
+                }
+            });
             
             // 重新绑定点击事件
             document.querySelectorAll('#group-list .list-group-item').forEach(item => {
