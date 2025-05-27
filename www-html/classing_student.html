@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生评价系统</title>
+    <!-- Bootstrap CSS -->
+    <link href="./css/bootstrap.min.css" rel="stylesheet">
+    <!-- Summernote CSS -->
+    <link href="css/summernote-bs5.min.css" rel="stylesheet">
+    <script src="script/bootstrap.bundle.min.js"></script>
+    <script src="script/jquery.min.js"></script>
+    <script src="script/summernote-bs5.min.js"></script>
+    <script src="script/summernote-zh-CN.js"></script>
+    <style>
+        /* 自定义样式 */
+        .sidebar {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 1000;
+        }
+        .content-area {
+            margin-right: 120px; /* 为侧边栏留出空间 */
+            padding-left: 0; /* 去除左侧内边距 */
+            height: 100%;
+        }
+        .card.h-100 {
+            height: calc(100% - 60px); /* 减去header高度 */
+        }
+        html, body {
+            height: 100%;
+        }
+        .page {
+            display: none;
+        }
+        .page.active {
+            display: block;
+            height: 100% !important;
+        }
+        .shadow-end {
+            box-shadow: 5px 0 10px -3px rgba(0,0,0,0.1);
+        }
+        .list-group-item {
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0;  /* 去除外边距 */
+        }
+        .list-group-item:hover {
+            background-color: #f8f9fa;
+        }
+        .active-btn {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(0,123,255,0.5);
+            font-weight: bold;
+        }
+        .list-group-item.active-item {
+            background-color: #bed9ff;
+            border-left: 3px solid #0b62e6;
+            transform: translateX(3px);
+        }
+        .chzt-full-height{
+            height: 100%;
+        }
+        .chzt-dynamic-content{
+            background-color: aliceblue;
+        }
+    </style>
+    <script>
+        let varGroupId = null;
+        let varGroupName = null;
+        /**
+         * 显示指定页面并隐藏其他页面
+         * @param {string} pageId 要显示的页面ID
+         */
+        function showPage(pageId) {
+            $('.page').removeClass('active');
+            $('#' + pageId).addClass('active');
+            
+            // 更新按钮状态
+            $('.sidebar .btn').removeClass('btn-primary').addClass('btn-secondary');
+            $(`.sidebar .btn:contains(${getButtonText(pageId)})`).removeClass('btn-secondary').addClass('btn-primary');
+        }
+        
+        /**
+         * 根据页面ID获取按钮文本
+         * @param {string} pageId 页面ID
+         * @returns {string} 对应的按钮文本
+         */
+        function getButtonText(pageId) {
+            const map = {
+                'submit-page': '作业提交',
+                'self-eval-page': '小组自评',
+                'peer-eval-page': '小组互评',
+                'view-eval-page': '查看评价'
+            };
+            return map[pageId] || '';
+        }
+
+        // 通过groupId获取groupName
+        function getGroupName(groupId, callback) {
+                $.ajax({
+                    url: '/group_info',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({group_id: groupId}),
+                    async: false,
+                    success: function(response) {
+                        if (response.status === 200) {
+                            callback(response.data.group_name);
+                        } else {
+                            console.error('获取小组名称失败:', response.message);
+                            callback('未知小组');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('获取小组名称请求出错:', error);
+                        callback('未知小组');
+                    }
+                });
+            }
+
+        // 加载其他小组列表
+        function loadOtherGroupsList() {
+            const currentGroupId = varGroupId; // 替换为当前用户的group_id
+            const otherGroupsList = document.getElementById('other-groups-list');
+            
+            // 显示加载状态
+            otherGroupsList.innerHTML = '<div class="text-center py-3">加载中...</div>';
+            
+            // 发起AJAX请求获取所有小组数据
+            $.ajax({
+                url: '/group_info/all',
+                type: 'GET',
+                success: function(response) {
+                    if (response.status === 200 && response.data) {
+                        // 过滤掉当前小组
+                        const filteredGroups = response.data.filter(group => group.id != currentGroupId);
+                        renderOtherGroupsList(filteredGroups);
+                    } else {
+                        otherGroupsList.innerHTML = '<div class="text-danger py-3">加载失败: ' + (response.message || '未知错误') + '</div>';
+                    }
+                },
+                error: function(xhr) {
+                    otherGroupsList.innerHTML = '<div class="text-danger py-3">请求失败: ' + (xhr.responseJSON?.message || xhr.statusText) + '</div>';
+                }
+            });
+        }
+
+        /**
+         * 渲染其他小组列表
+         * @param {Array} groups 小组数据数组(已过滤掉当前小组)
+         */
+        function renderOtherGroupsList(groups) {
+                const otherGroupsList = document.getElementById('other-groups-list');
+                let html = '';
+                
+                groups.forEach(group => {
+                    html += `
+                    <div class="list-group-item list-group-item-action border-0 px-3 py-3" data-group-id="${group.id}">
+                        <div class="d-flex flex-column">
+                            <span class="fw-bold fs-5">${group.group_name}</span>
+                            <span class="text-muted">组长: ${group.leader_name}</span>
+                        </div>
+                    </div>`;
+                });
+                
+                otherGroupsList.innerHTML = html || '<div class="text-muted py-3">暂无其他小组</div>';
+                
+                // 添加点击事件
+                document.querySelectorAll('#other-groups-list .list-group-item').forEach(item => {
+                    item.addEventListener('click', function() {
+                        // 移除所有active-item类
+                        document.querySelectorAll('#other-groups-list .list-group-item').forEach(i => {
+                            i.classList.remove('active-item');
+                        });
+                        // 添加active-item类
+                        this.classList.add('active-item');
+                        // 这里可以添加查看小组详情的逻辑
+                    });
+                });
+            }
+
+        // 页面加载完成后执行
+        $(document).ready(function() {
+            // 从URL中获取groupId
+            const urlParams = new URLSearchParams(window.location.search);
+            varGroupId = urlParams.get('stuid');
+            // 通过groupId获取groupName
+            getGroupName(varGroupId, function(groupName) {
+                varGroupName = groupName;
+            })
+            // 确保jQuery和Bootstrap已加载
+            if (typeof $ === 'undefined' || typeof $.fn.modal === 'undefined') {
+                console.error('jQuery或Bootstrap未正确加载');
+                // return;
+            }
+            $("#summernote").summernote({
+            lang : 'zh-CN',// 语言
+            height : 300, // 高度
+            minHeight : 300, // 最小高度
+            placeholder : '请输入要提交的作业内容', // 提示
+            // summernote自定义配置
+            toolbar: [
+            ['operate', ['undo','redo']],
+            ['magic',['style']],
+            ['style', ['bold', 'italic', 'underline', 'clear']],
+            ['para', ['height','fontsize','ul', 'ol', 'paragraph']],
+            ['font', ['strikethrough', 'superscript', 'subscript']],
+            ['color', ['color']],
+            ['insert',['picture','video','link','table','hr']],
+            ['layout',['fullscreen','codeview']],
+            ],
+            callbacks : { // 回调函数
+                // 图片上传
+                onImageUpload: function(files) {
+                    console.log('开始上传图片，文件名:', files[0].name, '大小:', files[0].size, 'bytes');
+                    var data = new FormData();
+                    data.append("file", files[0]);
+                    data.append("type", "textarea");
+                    var xhr = new XMLHttpRequest();
+                    xhr.responseType = "text";
+                    xhr.open("POST", "/image/upload", true);
+                    // 添加JWT认证头
+                    xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('jwt_token')}`);
+                    console.log('设置请求头完成，准备发送上传请求');
+                    
+                    xhr.onload = function(e) {
+                        console.log('上传请求完成，状态码:', this.status);
+                        $(".text-danger").html("文件上传成功!");
+                        setTimeout(function () {
+                            $(".text-danger").html("");
+                            $(".text-danger").hide();
+                        }, 3000);
+
+                        if(this.status == 200||this.status == 304){
+                            console.log('解析服务器响应');
+                            var json=eval("("+this.responseText+")");
+                            if (json.status==200) {
+                                console.log('图片上传成功，服务器返回路径:', json.path);
+                                var url = URL.createObjectURL(files[0]);
+                                $('#summernote').summernote('insertImage', url, function ($image) {
+                                    // 获取编辑器宽度和高度
+                                    var editorWidth = $('.note-editing-area').width();
+                                    var editorHeight = $('.note-editing-area').height();
+                                    console.log('编辑器宽度:', editorWidth, '高度:', editorHeight);
+                                    
+                                    // 计算图片的合适大小（长边不超过编辑器短边的80%）
+                                    var maxSize = Math.min(editorWidth, editorHeight) * 0.8;
+                                    console.log('最大允许图片大小:', maxSize);
+
+                                    // 设置图片样式
+                                    $image.css('max-width', maxSize + 'px');
+                                    $image.css('max-height', maxSize + 'px');
+                                    $image.css('width', 'auto');
+                                    $image.css('height', 'auto');
+                                    // $image.css('display', 'block');
+                                    $image.css('margin', '0 auto');
+                                    $image.css('padding', '10px');
+                                    $image.attr('src', json.path);
+                                    // 每次编辑器图片信息增加时，都要更新images数组；因为这些图片信息都已在后台服务器存储。加到images数组中，以便后续保存之前如果发现该图片被从编辑器删除，那么也可以做到能够提交该图片信息到后台服务器，从后台服务器删除该图片。
+                                    console.log('图片已插入编辑器，临时URL:', url, '最终路径:', json.path);
+                                    images.push(json.path);
+                                });
+                            } else {
+                                console.error('服务器返回错误状态:', json.status, '消息:', json.message);
+                            }
+                        }
+                    };
+                    xhr.onprogress = function (e) {
+                        console.log('上传进度:', (e.loaded / e.total * 100).toFixed(2) + '%');
+                        $(".text-danger").show();
+                        $(".text-danger").html("文件正在上传..");
+                    };
+                    xhr.onerror = function (e) {
+                        console.error('上传请求出错:', e);
+                        $(".text-danger").html("文件上传失败!");
+                    }
+                    xhr.send(data);
+                    console.log('上传请求已发送');
+                }
+                }
+            });
+    
+            // 获取当前课程信息
+            let courseId = "";
+            let courseName = "";
+            let courseTaskId = "";
+            let courseTaskName = "";
+            
+            // 获取课程ID和名称
+            $.ajax({
+                url:'/get_course_id',
+                type:'GET',
+                contentType:'application/json',
+                headers: {
+                    'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                },
+                async:false,
+                success:function(response) {
+                    if(response.status === 200 && response.data) {
+                        courseId = response.data.course_id;
+                        courseName = response.data.course_name;
+                        // 获取当前任务信息
+                        $.ajax({
+                            url:'/get_course_task_info',
+                            type:'POST',
+                            contentType:'application/json',
+                            headers: {
+                                'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                            },
+                            data: JSON.stringify({
+                                course_task_id: localStorage.getItem('course_task_id')
+                            }),
+                            async:false,
+                            success:function(response) {
+                                if(response.status === 200 && response.data) {
+                                    $('#course_task_info').text('[' + varGroupName+ '] ' + courseName + ' - ' + response.data.task.task_name);
+                                } else {
+                                    $('#course_task_info').text('[' + varGroupName+ '] ' + courseName + ' - 作业提交');
+                                }
+                            }
+                        });
+                    }
+                },
+                error:function(xhr) {
+                    console.error('获取课程信息失败:', xhr.responseJSON?.message || xhr.statusText);
+                }
+            });
+    
+            // 保存作业
+            $('#save-homework').click(function() {
+                const content = $('#summernote').summernote('code');
+                
+                $.ajax({
+                    url: '/homework',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    headers: {
+                        'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
+                    },
+                    data: JSON.stringify({
+                        request_type: 'submit',
+                        request_data: {
+                            homework_id: localStorage.getItem('course_task_id'),
+                            homework_content: content,
+                            group_id: localStorage.getItem('current_group_id')
+                        }
+                    }),
+                    success: function(response) {
+                        if(response.status === 200) {
+                            alert('作业保存成功');
+                        } else {
+                            alert('保存失败: ' + response.message);
+                        }
+                    },
+                    error: function(xhr) {
+                        alert('保存失败: ' + (xhr.responseJSON?.message || xhr.statusText));
+                    }
+                });
+
+            });
+
+            // 选择作业按钮点击事件
+            $('#select-task-btn').click(function() {
+                // 获取当前课程ID
+                let courseId = localStorage.getItem('course_id');
+                if (!courseId || courseId === '' || courseId === 'undefined') {
+                    // 发送ajax请求获取课程ID
+                    $.ajax({
+                        url: '/get_course_id',
+                        type: 'GET',
+                        headers: {
+                            'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                        },
+                        success: function(response) {
+                            if(response.status === 200 && response.data) {
+                                localStorage.setItem('course_id', response.data.course_id);
+                                courseId = response.data.course_id;
+                                loadTaskList(courseId);
+                            }
+                        },
+                        error: function(xhr) {
+                            console.error('获取课程ID失败:', xhr.responseText);
+                        }
+                    })
+                } else {
+                    loadTaskList(courseId);
+                }
+            });
+
+            // go-index-btn按钮点击事件
+            $('#go-index-btn').click(function() {
+                // 清空localStorage中的course_id
+                localStorage.removeItem('course_task_id');
+                // 跳转到首页
+                window.location.href = '/';
+            });
+
+            function loadTaskList(courseId) {
+                // 发起AJAX请求获取任务点
+                $.ajax({
+                    url: '/get_course_task_list',
+                    type: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
+                    },
+                    data: JSON.stringify({course_id: courseId}),
+                    success: function(response) {
+                        if(response.status === 200 && response.data) {
+                            // 清空容器
+                            $('#task-buttons-container').empty();
+                            
+                            // 为每个任务点创建按钮
+                            response.data.tasks.forEach(task => {
+                                const btn = $(`<button class="btn btn-outline-primary m-2 task-btn" 
+                                            data-task-id="${task.id}">${task.task_name}</button>`);
+                                
+                                // 按钮点击事件
+                                btn.click(function() {
+                                    localStorage.setItem('course_task_id', task.id);
+                                    // 刷新标题
+                                    $('#course_task_info').text('[' + varGroupName+ '] ' + `${courseName} - ${task.task_name}`);
+                                    // 调用showPage函数显示作业提交页面
+                                    showPage('submit-page');
+                                    $('#task-modal').modal('hide');
+                                });
+                                
+                                $('#task-buttons-container').append(btn);
+                            });
+                            
+                            // 显示模态框
+                            $('#task-modal').modal('show');
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('获取任务点失败:', xhr.responseText);
+                    }
+                });
+            }
+            
+            // 若是localStrong中不存在course_task_id，则触发选择作业按钮
+            if (!localStorage.getItem('course_task_id')) {
+                $('#select-task-btn').click();
+            }
+
+            // 默认显示作业提交页面
+            showPage('submit-page');
+            // 加载其他小组列表
+            loadOtherGroupsList();
+        })
+
+    </script>
+</head>
+<body>
+    <div class="container-fluid py-2 border-bottom">
+    <div class="row align-items-center">
+        <div class="col">
+            <h3 class="mb-0" id="course_task_info">学生评价系统</h3>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" id="select-task-btn">选择作业</button>
+        </div>
+        <div id="task-modal" class="modal fade" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">选择作业任务点</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="task-buttons-container">
+                        <!-- 任务点按钮将在这里动态生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-secondary" id="go-index-btn">返回首页</button>
+        </div>
+    </div>
+</div>
+
+    <div class="container-fluid content-area">
+        <!-- 作业提交页面 -->
+        <div id="submit-page" class="page active">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div id="summernote"></div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-primary" id="save-homework">保存作业</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 小组自评页面 -->
+        <div id="self-eval-page" class="page">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h4 class="text-muted">小组自评功能开发中</h4>
+                </div>
+            </div>
+        </div>
+
+        <!-- 小组互评页面 -->
+        <div id="peer-eval-page" class="page">
+            <div class="row g-0 chzt-full-height">
+                <!-- 左侧小组列表 (3列) -->
+                <div class="col-md-3">
+                    <div class="card shadow-end border-0 rounded-0 h-100">
+                        <div class="card-header bg-white px-3 py-3">
+                            <h5 class="mb-0">其他小组列表</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="list-group list-group-flush" id="other-groups-list">
+                                <!-- 其他小组卡片将通过JS动态加载 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 右侧内容区 (9列) -->
+                <div class="col-md-9">
+                    <div class="card border-0 h-100 rounded-0 chzt-dynamic-content">
+                        <div class="card-body p-0" id="peer-eval-content">
+                            <h4 class="text-muted m-3">请从左侧选择小组进行互评</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 查看评价页面 -->
+        <div id="view-eval-page" class="page">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h4 class="text-muted">评价查看功能开发中</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 垂直按钮组 -->
+    <div class="sidebar">
+        <div class="btn-group-vertical" role="group">
+            <button type="button" class="btn btn-primary" onclick="showPage('submit-page')">作业提交</button>
+            <button type="button" class="btn btn-secondary" onclick="showPage('self-eval-page')">小组自评</button>
+            <button type="button" class="btn btn-secondary" onclick="showPage('peer-eval-page')">小组互评</button>
+            <button type="button" class="btn btn-secondary" onclick="showPage('view-eval-page')">查看评价</button>
+        </div>
+    </div>
+
+    <!-- JavaScript 文件 -->
+    <script src="./js/bootstrap.bundle.min.js"></script>
+    <script src="./js/summernote-bs5.min.js"></script>
+    <script src="./js/summernote-zh-CN.js"></script>
+    
+</body>
+</html>

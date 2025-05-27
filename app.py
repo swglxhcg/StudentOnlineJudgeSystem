@@ -259,6 +259,70 @@ def get_course_id():
         if conn:
             conn.close()
 
+# 独立的小组信息查询接口，不需要JWT认证
+@app.route('/group_info', methods=['POST'])
+def get_group_info_no_auth():
+    """
+    通过小组ID获取小组信息(无需认证)
+    参数: {group_id: 小组ID}
+    返回: {status: 状态码, message: 消息, data: 小组信息}
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400, 'message': '请求数据为空'}), 400
+
+    group_id = data.get('group_id')
+    if not group_id:
+        return jsonify({'status': 422, 'message': '缺少group_id参数'}), 422
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute('SELECT id, group_name FROM student_groups WHERE id = %s', (group_id,))
+        group = cursor.fetchone()
+        
+        if not group:
+            return jsonify({'status': 404, 'message': '小组不存在'}), 404
+            
+        return jsonify({
+            'status': 200,
+            'message': '获取小组信息成功',
+            'data': {
+                'id': group['id'],
+                'group_name': group['group_name']
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取小组信息出错: {str(e)}")
+        return jsonify({'status': 500, 'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# 独立的所有小组信息查询接口，不需要JWT认证
+@app.route('/group_info/all', methods=['GET'])
+def get_all_groups_no_auth():
+    """
+    获取所有小组信息(无需认证)
+    返回: {status: 状态码, message: 消息, data: 所有小组信息列表}
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute('SELECT id, group_name, leader_name FROM student_groups')
+        groups = cursor.fetchall()
+        return jsonify({
+           'status': 200,
+           'message': '获取所有小组信息成功',
+            'data': groups
+        }), 200
+    except Exception as e:
+        logger.error(f"获取所有小组信息出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 # JWT认证接口
 @app.route('/jwt_auth', methods=['GET', 'OPTIONS'])
@@ -1711,7 +1775,7 @@ def class_login():
     for group in groups:
         options += f"""
         <div class="col-md-3 col-sm-6">
-            <a href="/class?stuid={group['id']}">
+            <a href="/classing?stuid={group['id']}&userclass=student">
                 <div class="class-btn btn btn-light btn-block">
                     <h4>{group['group_name']}</h4>
                     <p class="leader">组长: {group['leader_name']}</p>
