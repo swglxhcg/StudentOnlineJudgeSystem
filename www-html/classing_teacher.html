@@ -113,6 +113,9 @@
                 <!-- 右侧内容区 (9列) -->
                 <div class="col-md-9">
                     <div class="card border-0 h-100 rounded-0 chzt-dynamic-content">  <!-- 高度100% -->
+                        <div class="card-header bg-white px-3 py-3">  <!-- 减小header内边距 -->
+                            <h5 class="mb-0">作业完成情况</h5>
+                        </div>
                         <div class="card-body p-0" id="homework-dynamic-content">  <!-- 去除内边距 -->
                             <h4 class="text-muted m-3">请从左侧选择小组查看详情</h4>  <!-- 添加外边距 -->
                         </div>
@@ -332,6 +335,19 @@
                     window.location.href = '/';
                 }
             });
+
+            // 如果没有course_task_id，自动跳转到选择作业页面
+            if(!courseTaskId || courseTaskId === '' || courseTaskId === 'undefined') {
+                $('#select-task-btn').click();
+                // 默认自动选择第一个任务点
+                const firstTaskBtn = $('.task-btn:first');
+                if(firstTaskBtn.length > 0) {
+                    firstTaskBtn.click();
+                }
+            }
+
+            // 初始化页面
+            showPage('homework-page');
         });
         /**
          * 显示指定页面并隐藏其他页面
@@ -453,15 +469,11 @@
                     async: false,
                     success: function(response) {
                         if (response.status === 200 && response.data) {
-                            if(response.data.length === 0) {
+                            if(response.data.homework_content && response.data.homework_content !== '') {
+                                homework_content = response.data.homework_content;
+                                group.status = 'completed';
+                            }else{
                                 group.status = 'uncompleted';
-                            }else if(response.data.length > 0) {
-                                if(response.data.homework_content && response.data.homework_content !== '') {
-                                    homework_content = response.data.homework_content;
-                                    group.status = 'completed';
-                                }else{
-                                    group.status = 'uncompleted';
-                                }
                             }
                         } else {
                             group.status = 'uncompleted';
@@ -495,7 +507,7 @@
                 const dynamicContent = document.getElementById('homework-dynamic-content');
                 dynamicContent.innerHTML = `<div class="text-center py-3">加载中...</div>`;
 
-                if(homework_content !== '') {
+                if(false) {
                     dynamicContent.innerHTML = `<div class="text-center py-3">${homework_content}</div>`;
                 }else{
                     // 发起AJAX请求获取作业内容

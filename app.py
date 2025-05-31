@@ -1479,6 +1479,45 @@ def get_course_task_list():
         cursor.close()
         conn.close()
 
+# 单独的接口，用于获取测试点的评分点信息
+@app.route('/get_course_task_criteria', methods=['POST', 'OPTIONS'])
+def get_course_task_criteria():
+    """
+    获取测试点的评分点信息
+    参数: course_task_id 测试点id
+    返回: {status: 状态码, message: 消息, data: 数据(可选)}
+    """
+    logger.info(f"收到获取测试点的评分点信息请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    course_task_id = data.get('course_task_id')
+    if not course_task_id:
+        return jsonify({'status': 422,'message': '缺少course_task_id参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取测试点的评分点信息
+        cursor.execute('SELECT id, criteria_name, criteria_description FROM task_criteria WHERE task_id = %s', (course_task_id,))
+        criterias = cursor.fetchall()
+        return jsonify({
+         'status': 200,
+         'message': '获取测试点的评分点信息成功',
+            'data': {
+                'criterias': criterias
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取测试点的评分点信息出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 #=============================
 # 评分接口
 #=============================
@@ -1606,6 +1645,49 @@ def update_teacher_score(request_data):
         cursor.close()
         conn.close()
 
+# 单独的接口，用于获取评分
+@app.route('/get_group_score', methods=['POST', 'OPTIONS'])
+def get_group_score():
+    """
+    获取评分
+    参数: scored_group_id 被评分组id、score_point_id 评分点id，score_group_id 评分组id
+    返回: {status: 状态码, message: 消息, data: 数据(可选)}
+    """
+    logger.info(f"收到获取评分请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    scored_group_id = data.get('scored_group_id')
+    score_point_id = data.get('score_point_id')
+    score_group_id = data.get('score_group_id')
+    if not all([scored_group_id, score_point_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取评分组的评分
+        cursor.execute('SELECT score FROM peer_evaluations WHERE evaluator_group_id = %s AND evaluated_group_id = %s AND criteria_id = %s', (score_group_id, scored_group_id, score_point_id))
+        score_group = cursor.fetchone()
+        if not score_group:
+            return jsonify({'status': 404,'message': '评分组不存在'}), 404
+        return jsonify({
+        'status': 200,
+        'message': '获取评分成功',
+        'data': {
+            'score': score_group['score']
+        }
+        })
+    except Exception as e:
+        logger.error(f"获取评分出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 #=============================
 # 作业相关接口
 #=============================
@@ -1696,7 +1778,8 @@ def get_homework(request_data):
         return jsonify({'status': 422,'message': '缺少必要参数'}), 422
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        # 确保使用DictCursor以便通过列名访问结果
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
         # 检查作业是否存在
         cursor.execute('SELECT id FROM course_tasks WHERE id = %s', (homework_id,))
         if not cursor.fetchone():
@@ -1710,10 +1793,10 @@ def get_homework(request_data):
         homework_content = ""
         homework = cursor.fetchone()
         if not homework:
-            return jsonify({'status': 200,'message': '作业未提交', 'data': {'homework_content': homework_content}}), 200
+            return jsonify({'status': 200,'message': '作业未提交', 'code': 0, 'data': {'homework_content': homework_content}}), 200
         else:
             homework_content = homework['content']
-            return jsonify({'status': 200,'message': '作业获取成功', 'data': {'homework_content': homework_content}}), 200
+            return jsonify({'status': 200,'message': '作业获取成功', 'code':1, 'data': {'homework_content': homework_content}}), 200
     except Exception as e:
         logger.error(f"获取作业出错: {str(e)}")
         return jsonify({'status': 500,'message': str(e)}), 500

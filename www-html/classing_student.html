@@ -12,8 +12,20 @@
     <script src="script/jquery.min.js"></script>
     <script src="script/summernote-bs5.min.js"></script>
     <script src="script/summernote-zh-CN.js"></script>
+    <link href="./css/star-rating.min.css" media="all" rel="stylesheet" type="text/css" />
+    <!-- 默认主题 -->
+    <link href="./css/theme.css" media="all" rel="stylesheet" type="text/css" />
+    <script src="./js/star-rating.min.js" type="text/javascript"></script>
+    <!-- 默认主题 JS -->
+    <script src="./js/theme.js"></script>
     <style>
         /* 自定义样式 */
+        #self-rating-items .fw-bold {
+            font-size: 1.1rem;  /* 增大字体 */
+            min-width: 120px;   /* 设置最小宽度 */
+            display: inline-block;
+            margin-right: 15px; /* 增加右边距 */
+        }
         .sidebar {
             position: fixed;
             right: 20px;
@@ -66,23 +78,107 @@
         .chzt-dynamic-content{
             background-color: aliceblue;
         }
+        .chzt-rating-item{
+            padding: 10px;
+            border-bottom: 1px solid #ccc;
+            cursor: pointer;
+        }
+        .chzt-homework-content-area{
+            margin: 20px 10px;
+        }
     </style>
     <script>
         let varGroupId = null;
         let varGroupName = null;
+        let selectedGroupId = -1; // 存储当前选择的小组ID
         /**
          * 显示指定页面并隐藏其他页面
          * @param {string} pageId 要显示的页面ID
          */
         function showPage(pageId) {
-            $('.page').removeClass('active');
-            $('#' + pageId).addClass('active');
+            // $('.page').removeClass('active');
+            // $('#' + pageId).addClass('active');
             
-            // 更新按钮状态
+            // // 更新按钮状态
             $('.sidebar .btn').removeClass('btn-primary').addClass('btn-secondary');
             $(`.sidebar .btn:contains(${getButtonText(pageId)})`).removeClass('btn-secondary').addClass('btn-primary');
+
+            // 隐藏所有页面
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // 显示选中的页面
+            const currentPage = document.getElementById(pageId);
+            currentPage.classList.add('active');
+
+            console.log('显示页面:', pageId);
+            // 根据页面ID执行不同的函数
+            switch(pageId) {
+                case 'submit-page':
+                    loadHomeworkContentAndShow();
+                    break;
+                case 'self-eval-page':
+                    loadSelfEvaluationContent();
+                    break;
+                case 'peer-eval-page':
+                    loadOtherGroupsList();
+                    clearActiveItems();
+                    // 显示none-group-text-area元素
+                    document.getElementById('none-group-text-area').style.display = 'block';
+                    // 隐藏homework-content-area元素
+                    document.getElementById('homework-content-area').style.display = 'none';
+                    break;
+                case 'view-eval-page':
+
+                    break;
+            }
         }
-        
+
+        function loadHomeworkContentAndShow() {
+            // 获取当前选择的小组ID
+            const selectedGroupId = varGroupId;
+            // 发送AJAX请求获取作业内容
+            $.ajax({
+                url: '/homework',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    request_type: 'get',
+                    request_data: {
+                        group_id: selectedGroupId,
+                        homework_id: localStorage.getItem('course_task_id')
+                    }
+                }),
+                success: function(response) {
+                    if (response.status === 200 && response.data) {
+                        // 显示作业内容到summernote
+                        $('#summernote').summernote('code', response.data.homework_content);
+
+                        // 显示homework-content-area元素
+                        document.getElementById('homework-content-area').style.display = 'block';
+                        // 隐藏none-group-text-area元素
+                        document.getElementById('none-group-text-area').style.display = 'none';
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('获取作业内容请求出错:', error);
+                }
+            })
+        }
+
+        /**
+         * 清除所有active-item类
+         */
+        function clearActiveItems() {
+            selectedGroupId = -1;  // 重置选择的小组ID
+            $('#rating-area').empty();  // 清空评分区域
+            // 清除所有active-item类
+            document.querySelectorAll('#other-groups-list .list-group-item').forEach(i => {
+                i.classList.remove('active-item');
+            });
+        }
+
         /**
          * 根据页面ID获取按钮文本
          * @param {string} pageId 页面ID
@@ -137,7 +233,41 @@
                     if (response.status === 200 && response.data) {
                         // 过滤掉当前小组
                         const filteredGroups = response.data.filter(group => group.id != currentGroupId);
-                        renderOtherGroupsList(filteredGroups);
+
+                        // 同步检查每个小组的作业提交状态
+                        const submittedGroups = [];
+                        for (const group of filteredGroups) {
+                            try {
+                                const homeworkResponse = $.ajax({
+                                    url: '/homework',
+                                    type: 'POST',
+                                    contentType: 'application/json',
+                                    async: false, // 设置为阻塞式请求
+                                    data: JSON.stringify({
+                                        request_type: 'get',
+                                        request_data: {
+                                            group_id: group.id,
+                                            homework_id: localStorage.getItem('course_task_id')
+                                        }
+                                    })
+                                }).responseJSON;
+
+                                // 在对应的group中添加homework_content字段
+                                group.homework_content = homeworkResponse.data.homework_content;
+                                // 添加code字段，用于查看是否提交过作业，code=0表示未提交，code=1表示已提交
+                                group.code = homeworkResponse.code;
+                                
+                                // 检查作业内容是否有效
+                                if (homeworkResponse.status === 200 && 
+                                    homeworkResponse.data) {
+                                    submittedGroups.push(group);
+                                }
+                            } catch (e) {
+                                console.error('检查小组作业状态失败:', e);
+                            }
+                        }
+
+                        renderOtherGroupsList(submittedGroups);
                     } else {
                         otherGroupsList.innerHTML = '<div class="text-danger py-3">加载失败: ' + (response.message || '未知错误') + '</div>';
                     }
@@ -155,19 +285,22 @@
         function renderOtherGroupsList(groups) {
                 const otherGroupsList = document.getElementById('other-groups-list');
                 let html = '';
-                
+
                 groups.forEach(group => {
+                    const isDisabled = group.code === 0; // 检查code字段是否为0
                     html += `
-                    <div class="list-group-item list-group-item-action border-0 px-3 py-3" data-group-id="${group.id}">
+                    <div class="list-group-item list-group-item-action border-0 px-3 py-3 ${isDisabled ? 'disabled-item' : ''}" 
+                         data-group-id="${group.id}" ${isDisabled ? 'style="opacity:0.5; pointer-events:none;"' : ''}>
                         <div class="d-flex flex-column">
                             <span class="fw-bold fs-5">${group.group_name}</span>
                             <span class="text-muted">组长: ${group.leader_name}</span>
+                            ${isDisabled ? '<span class="text-danger">(未提交作业)</span>' : ''}
                         </div>
                     </div>`;
                 });
-                
+
                 otherGroupsList.innerHTML = html || '<div class="text-muted py-3">暂无其他小组</div>';
-                
+
                 // 添加点击事件
                 document.querySelectorAll('#other-groups-list .list-group-item').forEach(item => {
                     item.addEventListener('click', function() {
@@ -177,10 +310,374 @@
                         });
                         // 添加active-item类
                         this.classList.add('active-item');
-                        // 这里可以添加查看小组详情的逻辑
+                        // 获取小组ID
+                        const groupId = this.getAttribute('data-group-id');
+                        // 加载评分项
+                        onGroupClick(groupId);
+
                     });
                 });
             }
+
+        function onGroupClick(groupId) {
+            selectedGroupId = groupId; // 设置当前选择的小组ID
+            // 隐藏none-group-text-area元素
+            document.getElementById('none-group-text-area').style.display = 'none';
+            // 显示homework-content-area元素
+            document.getElementById('homework-content-area').style.display = 'block';
+
+            // 加载作业内容
+            $.ajax({
+                url: '/homework',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    request_type: 'get',
+                    request_data: {
+                        group_id: groupId,
+                        homework_id: localStorage.getItem('course_task_id')
+                    }
+                }),
+                success: function(response) {
+                    if (response.status === 200 && response.data) {
+                            // 加载到homework-content-card-body中
+                            $('#homework-content-card-body').html(response.data.homework_content);
+                    }
+                }
+            });
+            
+            // 清空并加载评分区域
+            const ratingArea = document.getElementById('rating-area');
+            ratingArea.innerHTML = '<div class="text-center py-3">加载评分项中...</div>';
+
+            let currentCourseTaskId = localStorage.getItem('course_task_id');
+            
+                       // 获取评分项数据
+            $.ajax({
+                url: '/get_course_task_criteria',
+                type: 'POST',
+                data: JSON.stringify({
+                    course_task_id: currentCourseTaskId // 需要确保这个变量已定义
+                }),
+                contentType: 'application/json',
+                success: function(response) {
+                    if (response.status === 200 && response.data) {
+                        renderRatingItems(response.data.criterias);
+                    } else {
+                        ratingArea.innerHTML = '<div class="text-danger py-3">加载评分项失败</div>';
+                    }
+                },
+                error: function(xhr) {
+                    ratingArea.innerHTML = '<div class="text-danger py-3">请求评分项失败</div>';
+                }
+            });
+        }
+
+        function renderRatingItems(items) {
+            console.log('渲染评分项:', items);
+            const ratingArea = document.getElementById('rating-area');
+            let html = '<div class="rating-items-container">';
+            
+            items.forEach(item => {
+                // 获取评分值
+                let ratingValue = 0;
+                try {
+                    ratingValue = getGroupRating(varGroupId, selectedGroupId, item.id).score;
+                }
+                catch (e) {
+                    console.error('获取评分值失败:', e);
+                }
+                // 检查评分值是否有效
+                if (ratingValue === null || ratingValue === undefined) {
+                    ratingValue = 0;
+                }
+
+
+                html += `
+                <div class="rating-item chzt-rating-item">
+                    <h4>${item.criteria_name}</h4>
+                    <input type="text" class="rating" value="${ratingValue}" data-size="lg" 
+                        data-item-id="${item.id}">
+                    <p class="text-muted">${item.criteria_description}</p>
+                </div>`;
+            });
+            
+            html += '</div>';
+            ratingArea.innerHTML = html;
+            
+            // 初始化所有评分插件
+            $('.rating').rating({
+                step:1,
+                size:'lg',
+                starCaptions: {
+                    1: '差',
+                    2: '一般',
+                    3: '好',
+                    4: '非常好',
+                    5: '优秀'
+                },
+                clearButtonTitle:"清除",
+                clearCaption:"未评分"
+            }).on('rating:change', function(event, value, caption) {
+                // 当评分改变时触发
+                const criteriaId = $(this).data('item-id');
+                updateRatingValue(criteriaId, value);
+            });
+        }
+
+        function getGroupRating(score_group_id, scored_group_id, score_point_id) {
+            /**
+             * 获取小组评分数据（阻塞式）
+             * @param {number} score_group_id 评分组ID
+             * @param {number} scored_group_id 被评分组ID
+             * @param {number} score_point_id 评分点ID
+             * @returns {object|null} 返回评分数据，失败时返回null
+             */
+            let result = null;
+            $.ajax({
+                url: '/get_group_score',
+                type: 'POST',
+                contentType: 'application/json',
+                async: false, // 设置为阻塞式请求
+                data: JSON.stringify({
+                    scored_group_id: scored_group_id,
+                    score_point_id: score_point_id,
+                    score_group_id: score_group_id
+                }),
+                success: function(response) {
+                    if (response.status === 200) {
+                        result = response.data;
+                    } else {
+                        console.error('获取评分失败:', response.message);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('请求出错:', error);
+                }
+            });
+            return result;
+        }
+        
+        /**
+         * 更新评分值
+         * @param {number} criteriaId 评分项ID
+         * @param {number} value 评分值
+         */
+        function updateRatingValue(criteriaId, value) {
+            console.log(`评分项 ${criteriaId} 的评分已更新为: ${value}`);
+            // 发送评分数据到后端
+            $.ajax({
+                url: '/score',
+                type: 'POST',
+                contentType: 'application/json',
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
+                },
+                data: JSON.stringify({
+                    request_type: 'student',
+                    request_data: {
+                        score_group_id: varGroupId,  // 当前用户所在小组ID
+                        scored_group_id: selectedGroupId,  // 被评分小组ID
+                        score_point_id: criteriaId,  // 评分项ID
+                        score: value  // 评分值
+                    }
+                }),
+                success: function(response) {
+                    if (response.status === 200) {
+                        console.log('评分更新成功:', response.message);
+                    } else {
+                        console.error('评分更新失败:', response.message);
+                    }
+                },
+                error: function(xhr) {
+                    console.error('评分请求失败:', xhr.responseJSON?.message || xhr.statusText);
+                }
+            });
+        }
+
+        function updateSelfRatingValue(criteriaId, value) {
+            console.log(`评分项 ${criteriaId} 的评分已更新为: ${value}`);
+            // 发送评分数据到后端
+            $.ajax({
+                url: '/score',
+                type: 'POST',
+                contentType: 'application/json',
+                headers: {
+                    'Authorization': 'Bearer'+ localStorage.getItem('jwt_token')
+                },
+                data: JSON.stringify({
+                    request_type:'student',
+                    request_data: {
+                        score_group_id: varGroupId,  // 当前用户所在小组ID
+                        scored_group_id: varGroupId,  // 被评分小组ID
+                        score_point_id: criteriaId,  // 评分项ID
+                        score: value  // 评分值
+                    }
+                }),
+                success: function(response) {
+                    if (response.status === 200) {
+                        console.log('评分更新成功:', response.message);
+                    }
+                },
+                error: function(xhr) {
+                    console.error('评分请求失败:', xhr.responseJSON?.message || xhr.statusText);
+                }
+            })
+        }
+
+        // 加载自评页面的作业内容
+        function loadSelfEvaluationContent() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentGroupId = urlParams.get('stuid');
+            const courseTaskId = localStorage.getItem('course_task_id');
+
+            // 隐藏submit-self-evaluation按钮，通过设置display属性
+            document.getElementById('submit-self-evaluation').style.display = 'none';
+            
+            $.ajax({
+                url: '/homework',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    request_type: 'get',
+                    request_data: {
+                        group_id: currentGroupId,
+                        homework_id: courseTaskId
+                    }
+                }),
+                success: function(response) {
+                    if (response.status === 200 && response.data) {
+                        if (response.code === 0) {  // 未提交作业
+                            $('#self-homework-content').html('<div class="text-danger py-3">未提交作业</div>');
+                            $('#self-rating-items').html('<div class="text-danger py-3">未提交作业，不能评分</div>');
+                            return;
+                        }else if (response.code === 1) {  // 已提交作业
+                            $('#self-homework-content').html(response.data.homework_content);
+                            loadSelfRatingItems(); // 加载评分项
+                        }
+                    } else {
+                        $('#self-homework-content').html('<div class="text-danger py-3">加载作业内容失败</div>');
+                    }
+                },
+                error: function(xhr) {
+                    $('#self-homework-content').html('<div class="text-danger py-3">请求作业内容失败</div>');
+                }
+            });
+        }
+
+        // 加载自评页面的评分项
+        function loadSelfRatingItems() {
+            const courseTaskId = localStorage.getItem('course_task_id');
+            
+            $.ajax({
+                url: '/get_course_task_criteria',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    course_task_id: courseTaskId
+                }),
+                success: function(response) {
+                    if (response.status === 200 && response.data && response.data.criterias) {
+                        renderSelfRatingItems(response.data.criterias);
+                    } else {
+                        $('#self-rating-items').html('<div class="text-danger py-3">加载评分项失败</div>');
+                    }
+                },
+                error: function(xhr) {
+                    $('#self-rating-items').html('<div class="text-danger py-3">请求评分项失败</div>');
+                }
+            });
+        }
+
+        // 渲染自评页面的评分项
+        function renderSelfRatingItems(criterias) {
+            let html = '<div class="rating-items-container">';
+            
+            criterias.forEach(criteria => {
+                // 获取评分值
+                let ratingValue = 0;
+                try {
+                    ratingValue = getGroupRating(varGroupId, varGroupId, criteria.id).score;
+                }
+                catch (e) {
+                    console.error('获取评分值失败:', e);
+                }
+                // 检查评分值是否有效
+                if (ratingValue === null || ratingValue === undefined) {
+                    ratingValue = 0;
+                }
+
+                html += `
+                <div class="rating-item chzt-rating-item">
+                    <h4>${criteria.criteria_name}</h4>
+                    <input type="text" class="rating" value="${ratingValue}" data-size="lg" 
+                        data-item-id="${criteria.id}">
+                    <p class="text-muted">${criteria.criteria_description}</p>
+                </div>`;
+            });
+            
+            html += '</div>';
+            $('#self-rating-items').html(html);
+            
+           // 初始化所有评分插件（与互评页面相同的配置）
+            $('.rating').rating({
+                step:1,
+                size:'lg',
+                starCaptions: {
+                    1: '差',
+                    2: '一般',
+                    3: '好',
+                    4: '非常好',
+                    5: '优秀'
+                },
+                clearButtonTitle:"清除",
+                clearCaption:"未评分"
+            }).on('rating:change', function(event, value, caption) {
+                // 当评分改变时触发
+                const criteriaId = $(this).data('item-id');
+                updateSelfRatingValue(criteriaId, value);
+            });
+            // 显示submit-self-evaluation按钮，通过设置display属性
+            document.getElementById('submit-self-evaluation').style.display = 'block';
+        }
+
+        // 提交自评
+        $('#submit-self-evaluation').click(function() {
+            const ratings = [];
+            $('.rating').each(function() {
+                ratings.push({
+                    criteria_id: $(this).data('criteria-id'),
+                    criteria_name: $(this).data('criteria-name'),
+                    score: $(this).val()
+                });
+            });
+            
+            const currentGroupId = varGroupId;
+            const courseTaskId = localStorage.getItem('course_task_id');
+            
+            $.ajax({
+                url: '/submit_rating',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    rater_group_id: currentGroupId,
+                    rated_group_id: currentGroupId,
+                    task_id: courseTaskId,
+                    ratings: ratings
+                }),
+                success: function(response) {
+                    if (response.status === 200) {
+                        alert('自评提交成功');
+                    } else {
+                        alert('自评提交失败: ' + response.message);
+                    }
+                },
+                error: function(xhr) {
+                    alert('请求失败，请稍后再试');
+                }
+            });
+        });
+
 
         // 页面加载完成后执行
         $(document).ready(function() {
@@ -345,7 +842,7 @@
                         request_data: {
                             homework_id: localStorage.getItem('course_task_id'),
                             homework_content: content,
-                            group_id: localStorage.getItem('current_group_id')
+                            group_id: varGroupId
                         }
                     }),
                     success: function(response) {
@@ -430,6 +927,15 @@
                                 
                                 $('#task-buttons-container').append(btn);
                             });
+                            // 默认设置第一个任务点为选中状态
+                            if (response.data.tasks.length > 0) {
+                                const firstTaskId = response.data.tasks[0].id;
+                                localStorage.setItem('course_task_id', firstTaskId);
+                                // 刷新标题
+                                $('#course_task_info').text('[' + varGroupName+ ']'+ `${courseName} - ${response.data.tasks[0].task_name}`);
+                                // 调用showPage函数显示作业提交页面
+                                showPage('submit-page');
+                            }
                             
                             // 显示模态框
                             $('#task-modal').modal('show');
@@ -499,7 +1005,25 @@
         <div id="self-eval-page" class="page">
             <div class="card h-100">
                 <div class="card-body">
-                    <h4 class="text-muted">小组自评功能开发中</h4>
+                    <!-- 作业内容展示区域 -->
+                    <div class="border-bottom p-4" id="self-evaluation-content">
+                        <h6>作业内容</h6>
+                        <div class="border rounded p-3 mt-2" id="self-homework-content">
+                            <div class="text-center text-muted py-4">加载中...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 评分区域 -->
+                    <div class="flex-grow-1 p-4 overflow-auto" id="self-rating-area">
+                        <h6>评分项</h6>
+                        <div class="mt-3" id="self-rating-items">
+                            <div class="text-center text-muted py-4">请等待评分项加载...</div>
+                        </div>
+                        
+                        <div class="mt-4">
+                            <button class="btn btn-primary" id="submit-self-evaluation">提交自评</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -520,12 +1044,23 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- 右侧内容区 (9列) -->
                 <div class="col-md-9">
                     <div class="card border-0 h-100 rounded-0 chzt-dynamic-content">
                         <div class="card-body p-0" id="peer-eval-content">
-                            <h4 class="text-muted m-3">请从左侧选择小组进行互评</h4>
+                            <h4 class="text-muted m-3" style="display: none;" id="none-group-text-area">请从左侧选择小组进行互评</h4>
+                            <div id="homework-content-area" class="card chzt-homework-content-area" style="display: none;">
+                                <div class="card-header bg-white px-3 py-3">
+                                    <h5 class="mb-0">作业内容</h5>
+                                </div>
+                                <div class="card-body p-3" id="homework-content-card-body">
+                                    <!-- 作业内容将在这里动态加载 -->
+                                </div>
+                            </div>
+                            <div id="rating-area" class="mt-4">
+                                <!-- 评分项将在这里动态加载 -->
+                            </div>
                         </div>
                     </div>
                 </div>
