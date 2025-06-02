@@ -22,7 +22,7 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 app.config['JWT_SECRET_KEY'] = 'chzt'  # 生产环境请使用更安全的密钥
 app.config['JWT_ALGORITHM'] = 'HS256'
-app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=365)  # 刷新令牌有效期
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=90)  # 刷新令牌有效期
 jwt = JWTManager(app)
 
 # 数据库连接配置
@@ -1688,6 +1688,339 @@ def get_group_score():
         cursor.close()
         conn.close()
 
+# 班级整体自评情况接口，返回浮点数，表示当前评分项的大于二星的比例
+@app.route('/get_group_score_overall', methods=['POST', 'OPTIONS'])
+def get_group_score_overall():
+    """
+    获取班级整体自评情况
+    参数: task_id 任务点id
+    返回: {status: 状态码, message: 消息, data: 数据}
+    """
+    logger.info(f"收到获取班级整体自评情况请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    task_id = data.get('task_id')
+    if not all([task_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    response_data = []
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取任务点的评分点信息，从task_criteria表中获取
+        cursor.execute('SELECT id FROM task_criteria WHERE task_id = %s', (task_id,))
+        criteria_ids = cursor.fetchall()
+        if not criteria_ids:
+            return jsonify({'status': 404,'message': '任务点不存在'}), 404
+        # 对于每个评分点，获取评分组的评分，从peer_evaluations表中获取
+        scores = []
+        for criteria_id in criteria_ids:
+            logger.info(f"criteria_id: {criteria_id}")
+            response_criteria_id = criteria_id['id']
+            # 通过task_criteria表中的criteria_id获取task_criteria.criteria_name和task_criteria.criteria_description
+            cursor.execute('SELECT criteria_name, criteria_description FROM task_criteria WHERE id = %s', (response_criteria_id,))
+            temp_criteria = cursor.fetchone()
+            logger.info(f"temp_criteria: {temp_criteria}")
+            response_criteria_name = temp_criteria['criteria_name']
+            response_criteria_description = temp_criteria['criteria_description']
+            # 通过peer_evaluations表中的criteria_id获取peer_evaluations.score
+            vaild_score = 0         # 有效评分,大于二星的评分
+            total_score = 0         # 总评分,设定为小组总数，即student_groups表的数据条数
+            cursor.execute('SELECT COUNT(*) FROM student_groups')
+            total_score = cursor.fetchone()['COUNT(*)']
+            logger.info(f"total_score: {total_score}")
+            cursor.execute('SELECT score, evaluator_group_id, evaluated_group_id FROM peer_evaluations WHERE criteria_id = %s', (criteria_id['id'],))
+            score_group = cursor.fetchall()
+            
+            for score in score_group:
+                if score['score'] > 2 and score['evaluator_group_id'] == score['evaluated_group_id']:
+                    vaild_score += 1
+            # 构造返回数据
+            response_data.append({
+                'criteria_id': response_criteria_id,
+                'criteria_name': response_criteria_name,
+                'criteria_description': response_criteria_description,
+                'score': vaild_score/total_score if total_score != 0 else 0
+            })
+        return jsonify({
+        'status': 200,
+        'message': '获取班级整体自评情况成功',
+            'data': {
+                'scores': response_data
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取班级整体自评情况出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# 获取某一任务点的某一小组的评分情况接口，返回该小组的所有评分点的评分情况
+@app.route('/get_group_score_detail', methods=['POST', 'OPTIONS'])
+def get_group_score_detail():
+    """
+    获取某一任务点的某一小组的评分情况
+    参数: scored_group_id 被评分组id、task_id 任务点id
+    返回: {status: 状态码, message: 消息, data: 数据}
+    """
+    logger.info(f"收到获取某一任务点的某一小组的评分情况请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    scored_group_id = data.get('group_id')
+    task_id = data.get('task_id')
+    if not all([scored_group_id, task_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取任务点的评分点信息，从task_criteria表中获取
+        cursor.execute('SELECT id FROM task_criteria WHERE task_id = %s', (task_id,))
+        criteria_ids = cursor.fetchall()
+        if not criteria_ids:
+            return jsonify({'status': 404,'message': '任务点不存在'}), 404
+        # 对于每个评分点，获取评分组的评分，从peer_evaluations表中获取
+        scores = []
+        for criteria_id in criteria_ids:
+            logger.info(f"criteria_id: {criteria_id}")
+            response_criteria_id = criteria_id['id']
+            # 通过task_criteria表中的criteria_id获取task_criteria.criteria_name和task_criteria.criteria_description
+            cursor.execute('SELECT criteria_name, criteria_description FROM task_criteria WHERE id = %s', (response_criteria_id,))
+            temp_criteria = cursor.fetchone()
+            logger.info(f"temp_criteria: {temp_criteria}")
+            response_criteria_name = temp_criteria['criteria_name']
+            response_criteria_description = temp_criteria['criteria_description']
+            # 通过peer_evaluations表中的criteria_id获取peer_evaluations.score
+            cursor.execute('SELECT score FROM peer_evaluations WHERE evaluator_group_id = %s AND evaluated_group_id = %s AND criteria_id = %s', (scored_group_id, scored_group_id, criteria_id['id'],))
+            score_group = cursor.fetchone()
+            if not score_group:
+                return jsonify({'status': 404,'message': '评分组不存在'}), 404
+            # 构造返回数据
+            scores.append({
+                'criteria_id': response_criteria_id,
+                'criteria_name': response_criteria_name,
+                'criteria_description': response_criteria_description,
+               'score': score_group['score']
+            })
+        return jsonify({
+            'status': 200,
+            'message': '获取评分情况成功',
+            'data': {
+                'scores': scores
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取评分情况出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# 小组自评情况接口，返回是否完成自评
+@app.route('/get_group_score_self', methods=['POST', 'OPTIONS'])
+def get_group_score_self():
+    """
+    获取小组自评情况
+    参数: score_group_id 评分组id
+    返回: {status: 状态码, message: 消息, data: 数据}
+    """
+    logger.info(f"收到获取小组自评情况请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    score_group_id = data.get('group_id')
+    if not all([score_group_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取评分组的评分
+        cursor.execute('SELECT score FROM peer_evaluations WHERE evaluator_group_id = %s AND evaluated_group_id = %s', (score_group_id, score_group_id))
+        score_group = cursor.fetchone()
+        if not score_group:
+            return jsonify({
+                'status': 200,
+                'message': '获取小组自评情况成功',
+                'data': {
+                    'isok': 0
+                }
+            })
+        return jsonify({
+            'status': 200,
+            'message': '获取小组自评情况成功',
+            'data': {
+                'isok': 1
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取小组自评情况出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# 教师评价接口，获取某小组在某评分点的总分
+@app.route('/get_group_total_score', methods=['POST', 'OPTIONS'])
+def get_group_total_score():
+    """
+    获取小组总分
+    参数: scored_group_id 被评分组id、criteria_id 评分点id
+    返回: {status: 状态码, message: 消息, data: 数据}
+    """
+    logger.info(f"收到获取小组总分请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    scored_group_id = data.get('scored_group_id')
+    criteria_id = data.get('criteria_id')
+    if not all([scored_group_id, criteria_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取评分组的评分
+        cursor.execute('SELECT score FROM peer_evaluations WHERE  evaluated_group_id = %s AND criteria_id = %s', (scored_group_id, criteria_id))
+        # 计算总分
+        score_group = cursor.fetchall()
+        if not score_group:
+            return jsonify({'status': 404,'message': '评分组不存在'}), 404
+        total_score = 0
+        for score in score_group:
+            total_score += score['score']
+        return jsonify({
+           'status': 200,
+          'message': '获取小组总分成功',
+           'data': {
+              'total_score': total_score
+           }
+        })
+    except Exception as e:
+        logger.error(f"获取小组总分出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# 教师评价接口，获取某小组在某任务点的总分
+@app.route('/get_group_total_score_task', methods=['POST', 'OPTIONS'])
+def get_group_total_score_task():
+    """
+    获取小组总分
+    参数: scored_group_id 被评分组id、task_id 任务点id
+    返回: {status: 状态码, message: 消息, data: 数据}
+    """
+    logger.info(f"收到获取小组总分请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    scored_group_id = data.get('scored_group_id')
+    task_id = data.get('task_id')
+    if not all([scored_group_id, task_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        total_score = 0
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 获取任务点的评分点信息，从task_criteria表中获取
+        cursor.execute('SELECT id FROM task_criteria WHERE task_id = %s', (task_id,))
+        criteria_ids = cursor.fetchall()
+        if not criteria_ids:
+            return jsonify({'status': 404,'message': '任务点不存在'}), 404
+        
+        for criteria_id in criteria_ids:
+            response_criteria_id = criteria_id['id']
+            # 通过peer_evaluations表中的criteria_id获取peer_evaluations.score总和
+            logger.info(f"criteria_id: {criteria_id} && group_id: {scored_group_id}")
+            
+            cursor.execute('SELECT score FROM peer_evaluations WHERE  evaluated_group_id = %s AND criteria_id = %s', (scored_group_id, criteria_id['id']))
+            score_group = cursor.fetchall()
+            logger.info(f"score_group: {score_group}")
+            if not score_group:
+                return jsonify({'status': 404,'message': '评分组不存在'}), 404
+            
+            for score in score_group:
+                total_score += score['score']
+        return jsonify({
+           'status': 200,
+           'message': '获取小组总分成功',
+            'data': {
+               'total_score': total_score
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取小组总分出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# 学生端查看评价接口，获取某小组在某评分点的总分
+@app.route('/get_group_total_score_task_criteria_student', methods=['POST', 'OPTIONS'])
+def get_group_total_score_task_criteria_student():
+    """
+    获取小组总分
+    参数: scored_group_id 被评分组id、criteria_id 评分点id
+    返回: {status: 状态码, message: 消息, data: 数据}
+    """
+    logger.info(f"收到获取小组总分请求: {request.method}")
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 200}), 200
+    # 解析请求数据
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 400,'message': '请求数据为空'}), 400
+    # 验证请求数据格式
+    scored_group_id = data.get('scored_group_id')
+    criteria_id = data.get('criteria_id')
+    if not all([scored_group_id, criteria_id]):
+        return jsonify({'status': 422,'message': '缺少必要参数'}), 422
+    try:
+        total_score = 0
+        conn = get_db_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        # 对于每个评分点，获取评分组的评分，从peer_evaluations表中获取
+        total_score = 0         # 总评分
+        cursor.execute("SELECT score FROM peer_evaluations WHERE criteria_id = %s AND evaluated_group_id = %s", (criteria_id, scored_group_id))
+        score_all = cursor.fetchall()
+        if not score_all:
+            return jsonify({'status': 404,'message': '评分组不存在'}), 404
+        for score in score_all:
+            total_score += score['score']
+        return jsonify({
+            'status': 200,
+            'message': '获取小组总分成功',
+            'data': {
+                'total_score': total_score
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取小组总分出错: {str(e)}")
+        return jsonify({'status': 500,'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 #=============================
 # 作业相关接口
 #=============================
@@ -2116,6 +2449,9 @@ def generate_teacher_class_page(current_user):
         $('.course-btn').click(function(e) {
             e.preventDefault();
             var courseId = $(this).data('course-id');
+            
+            // 设置当前课程ID到localStorage
+            localStorage.setItem('course_id', courseId);
             
             // 发送AJAX请求
             $.ajax({

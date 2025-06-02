@@ -7,6 +7,7 @@
     <!-- Bootstrap CSS -->
     <link href="./css/bootstrap.min.css" rel="stylesheet">
     <script src="/js/jquery.min.js"></script>
+    <script src="/js/chart.js"></script>
     <style>
         /* 自定义样式 */
         .sidebar {
@@ -37,6 +38,7 @@
         .shadow-end {
             box-shadow: 5px 0 10px -3px rgba(0,0,0,0.1);
         }
+        
         .list-group-item {
             cursor: pointer;
             transition: all 0.2s;
@@ -45,15 +47,30 @@
         .list-group-item:hover {
             background-color: #f8f9fa;
         }
-        .active-btn {
-            transform: scale(1.05);
-            box-shadow: 0 0 10px rgba(0,123,255,0.5);
-            font-weight: bold;
-        }
         .list-group-item.active-item {
             background-color: #bed9ff;
             border-left: 3px solid #0b62e6;
             transform: translateX(3px);
+        }
+
+        .self-eval-list-group-item {
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0;  /* 去除外边距 */
+        }
+        .self-eval-list-group-item:hover {
+            background-color: #f8f9fa;
+        }
+        .self-eval-list-group-item.active-item {
+            background-color: #bed9ff;
+            border-left: 3px solid #0b62e6;
+            transform: translateX(3px);
+        }
+
+        .active-btn {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(0,123,255,0.5);
+            font-weight: bold;
         }
         .chzt-full-height{
             height: 100%;
@@ -170,8 +187,10 @@
         </div>
         
         <div id="teacher-eval-page" class="page">
-            <h1>教师评价</h1>
-            <p>这里是教师评价的内容</p>
+            <div class="row g-0 chzt-full-height">
+                <div id="teacher-eval-container" class="col-md-12">
+                </div>
+            </div>
         </div>
     </div>
 
@@ -318,6 +337,14 @@
                                 $('#task-buttons-container').append(btn);
                             });
                             
+                            // 默认选中第一个任务点
+                            if(response.data.tasks.length > 0) {
+                                const firstTaskBtn = $('.task-btn:first');
+                                if(firstTaskBtn.length > 0) {
+                                    firstTaskBtn.click();
+                                }
+                            }
+
                             // 显示模态框
                             $('#task-modal').modal('show');
                         }
@@ -329,6 +356,7 @@
                 
             });
 
+            
             // 返回首页按钮点击事件，提供确认弹窗
             $('#go-index-btn').click(function() {
                 if (confirm('是否确认返回首页？')) {
@@ -339,11 +367,6 @@
             // 如果没有course_task_id，自动跳转到选择作业页面
             if(!courseTaskId || courseTaskId === '' || courseTaskId === 'undefined') {
                 $('#select-task-btn').click();
-                // 默认自动选择第一个任务点
-                const firstTaskBtn = $('.task-btn:first');
-                if(firstTaskBtn.length > 0) {
-                    firstTaskBtn.click();
-                }
             }
 
             // 初始化页面
@@ -565,12 +588,559 @@
         function loadSelfEvalPage() {
             // TODO: 实现小组自评情况页面的加载逻辑
             console.log('加载小组自评情况页面');
+            let html = '';
+            // 动态加载小组列表
+            const selfEvalGroupList = document.getElementById('self-eval-group-list');
+            
+            html += `
+            <div class="self-eval-list-group-item list-group-item-action border-0 px-3 py-3" id="class-overview-btn">
+                <div class="d-flex flex-column">
+                    <span class="fw-bold fs-5">班级整体情况</span>
+                </div>
+            </div>`;
+            // 发起AJAX请求获取小组数据
+            $.ajax({
+                url: '/groups',
+                type: 'POST',
+                contentType: 'application/json',
+                async: false,
+                headers: {
+                    'Authorization': 'Bearer '+ localStorage.getItem('jwt_token')
+                },
+                data: JSON.stringify({
+                    request_type: 'get_all'
+                }),
+                success: function(response) {
+                    if (response.status === 200 && response.data) {
+                        response.data.forEach(group => {
+                                // 进行ajax请求,/get_group_score_self接口获取该小组是否完成自评
+                            $.ajax({
+                                url: '/get_group_score_self',
+                                type: 'POST',
+                                contentType: 'application/json',
+                                headers: {
+                                    'Authorization': 'Bearer '+ localStorage.getItem('jwt_token')
+                                },
+                                data: JSON.stringify({
+                                    group_id: group.id
+                                }),
+                                async: false,
+                                success: function(response) {
+                                    if (response.status === 200 && response.data) {
+                                            if(response.data.isok === 1) {
+                                                html += `
+                                                <div class="self-eval-list-group-item list-group-item-action border-0 px-3 py-3" data-group-id="${group.id}">
+                                                    <div class="d-flex flex-column">
+                                                        <span class="fw-bold fs-5">${group.group_name}</span>
+                                                        <span class="text-muted">组长: ${group.leader_name}</span>
+                                                        <span class="badge bg-success rounded-pill mt-2 align-self-start">
+                                                            已完成
+                                                        </span>
+                                                    </div>
+                                                </div>`;
+                                            }else{
+                                                html += `
+                                                <div class="self-eval-list-group-item list-group-item-action border-0 px-3 py-3 disabled-item" 
+                                                     data-group-id="${group.id}" 
+                                                     style="opacity: 0.5; pointer-events: none;">
+                                                    <div class="d-flex flex-column">
+                                                        <span class="fw-bold fs-5">${group.group_name}</span>
+                                                        <span class="text-muted">组长: ${group.leader_name}</span>
+                                                        <span class="badge bg-secondary rounded-pill mt-2 align-self-start">
+                                                            未完成
+                                                        </span>
+                                                    </div>
+                                                </div>`;
+                                            }
+                                    }else{
+                                        html += `
+                                                <div class="self-eval-list-group-item list-group-item-action border-0 px-3 py-3 disabled-item" 
+                                                     data-group-id="${group.id}" 
+                                                     style="opacity: 0.5; pointer-events: none;">
+                                                    <div class="d-flex flex-column">
+                                                        <span class="fw-bold fs-5">${group.group_name}</span>
+                                                        <span class="text-muted">组长: ${group.leader_name}</span>
+                                                        <span class="badge bg-secondary rounded-pill mt-2 align-self-start">
+                                                            未完成
+                                                        </span>
+                                                    </div>
+                                                </div>`;
+                                    }
+                                }
+                            })
+                        })
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error:', xhr.responseJSON?.message || xhr.statusText);
+                }
+            });
+            // 渲染小组列表
+            selfEvalGroupList.innerHTML = html;
+
+            // 添加班级整体情况按钮点击事件处理
+            $(document).on('click', '#class-overview-btn', function() {
+                console.log('点击的班级整体情况按钮');
+
+                // 移除所有active-item类
+                $('#self-eval-group-list .self-eval-list-group-item').removeClass('active-item');
+                // 为当前点击的项添加active-item类
+                $(this).addClass('active-item');
+
+                // 更新self-eval-dynamic-content内容
+                const dynamicContent = document.getElementById('self-eval-dynamic-content');
+                dynamicContent.innerHTML = `<div class="text-center py-3">加载中...</div>`;
+                // 发起AJAX请求获取班级整体情况,使用/get_group_score_overall接口获取班级整体情况
+                $.ajax({
+                    url: '/get_group_score_overall',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    headers: {
+                        'Authorization': 'Bearer '+ localStorage.getItem('jwt_token')
+                    },
+                    data: JSON.stringify({
+                        task_id: localStorage.getItem('course_task_id')  // 修改参数名与接口一致
+                    }),
+                    success: function(response) {
+                        if (response.status === 200 && response.data) {
+                            // 创建饼状图容器
+                            let html = '<div class="card"><div class="card-body">';
+                            html += '<div class="row">';
+                            
+                            // 为每个评分项创建饼状图
+                            response.data.scores.forEach(criteria => {
+                                const scorePercent = Math.round(criteria.score * 100);
+                                const remainingPercent = 100 - scorePercent;
+                                
+                                html += `
+                                    <div class="col-md-4 float-left">
+                                        <h5>${criteria.criteria_name}</h5>
+                                        <p>${criteria.criteria_description}</p>
+                                        <canvas id="chart-${criteria.criteria_id}" width="200" height="200"></canvas>
+                                    </div>
+                                `;
+                            });
+                            
+                            html += '</div></div></div>';
+                            dynamicContent.innerHTML = html;
+
+                            // 为每个评分项创建饼状图
+                            response.data.scores.forEach(criteria => {
+                                const scorePercent = Math.round(criteria.score * 100);
+                                const remainingPercent = 100 - scorePercent;
+                                const ctx = document.getElementById(`chart-${criteria.criteria_id}`);
+                                new Chart(ctx, {
+                                    type: 'pie',
+                                    data: {
+                                        labels: ['优秀', '及格'],
+                                        datasets: [{
+                                            data: [scorePercent, remainingPercent],
+                                            backgroundColor: [
+                                                'rgba(54, 235, 162, 0.7)',
+                                                'rgba(255, 99, 132, 0.7)'
+                                            ],
+                                            borderWidth: 1
+                                        }]
+                                    },
+                                    options: {
+                                        responsive: false,
+                                        plugins: {
+                                            legend: {
+                                                position: 'bottom'
+                                            },
+                                            tooltip: {
+                                                callbacks: {
+                                                    label: function(context) {
+                                                        return context.label + ': ' + context.raw + '%';
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            })
+                            
+                        }
+                    }
+                })
+            })
+
+            // 添加小组按钮点击事件处理
+            $(document).on('click', '.self-eval-list-group-item[data-group-id]', function() {
+                const groupId = $(this).data('group-id');
+                console.log('点击的小组ID:', groupId);
+
+                // 移除所有active-item类
+                $('#self-eval-group-list .self-eval-list-group-item').removeClass('active-item');
+                // 为当前点击的项添加active-item类
+                $(this).addClass('active-item');
+
+                // 更新self-eval-dynamic-content内容
+                const dynamicContent = document.getElementById('self-eval-dynamic-content');
+                dynamicContent.innerHTML = `<div class="text-center py-3">加载中...</div>`;
+                let html = `
+                    <div class="card">
+                        <div class="card-body">
+                            <canvas id="criteriaChart" height="150"></canvas>
+                        </div>
+                    </div>
+                `;
+                dynamicContent.innerHTML = html;
+                // 发起AJAX请求获取小组自评情况，通过get_group_score_detail接口获取小组自评情况
+                $.ajax({
+                    url: '/get_group_score_detail',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    headers: {
+                        'Authorization': 'Bearer '+ localStorage.getItem('jwt_token')
+                    },
+                    data: JSON.stringify({
+                        group_id: groupId,
+                        task_id: localStorage.getItem('course_task_id')
+                    }),
+                    success: function(response) {
+                        if (response.status === 200 && response.data) {
+                            // 渲染小组自评情况数据
+                            const ctx = document.getElementById('criteriaChart');
+                            // 构造labels和data数组 
+                            temp_labels = response.data.scores.map(c => c.criteria_name);
+                            temp_data = response.data.scores.map(c => Math.round(c.score));
+                            const chartData = {
+                                labels: temp_labels,
+                                datasets: [{
+                                    label: '评分',
+                                    data: temp_data,
+                                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                                    borderColor: 'rgba(54, 162, 235, 1)',
+                                    borderWidth: 1
+                                }]
+                            };
+                            
+                            new Chart(ctx, {
+                                type: 'bar',
+                                data: chartData,
+                                options: {
+                                    responsive: true,
+                                    scales: {
+                                        y: {
+                                            beginAtZero: true,
+                                            max: 5,
+                                            ticks: {
+                                                stepSize: 1  // 设置y轴步长为1
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    },
+                    error: function(xhr) {
+                        dynamicContent.innerHTML = `<div class="text-danger py-3">请求失败:'+ (xhr.responseJSON?.message || xhr.statusText) + '</div>`;
+                    }
+                })
+            })
+        
+            // 初始化显示班级整体情况
+            $('#class-overview-btn').click();
         }
 
         // 教师评价页面加载函数
         function loadTeacherEvalPage() {
-            // TODO: 实现教师评价页面的加载逻辑
-            console.log('加载教师评价页面');
+            // 获取容器元素
+            const container = document.getElementById('teacher-eval-container');
+            
+            // 设置页面HTML结构
+            container.innerHTML = `
+                <div class="container">
+                    <h1 class="title">教师评价页面</h1>
+                    <div class="group-list">
+                        <!-- 小组卡片将通过AJAX动态加载 -->
+                        <div class="text-center py-3">加载中...</div>
+                    </div>
+                </div>
+                
+                <div class="fullscreen-modal" id="fullscreenModal">
+                    <div class="modal-content">
+                        <h3 class="modal-title">评价详情</h3>
+                        <p class="modal-message" id="modalMessage"></p>
+                        <button class="modal-close" onclick="closeModal()">关闭</button>
+                    </div>
+                </div>
+            `;
+            
+            // 添加样式
+            const style = document.createElement('style');
+            style.textContent = `
+                .container {
+                    width: 80%;
+                    background: #ffffff;
+                    padding: 20px;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                }
+                
+                .title {
+                    text-align: center;
+                    font-size: 24px;
+                    margin-bottom: 20px;
+                }
+                
+                .group-list {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 20px;
+                }
+                
+                body {
+                    font-family: Arial, sans-serif;
+                    background-color: #f0f0f0;
+                    margin: 0;
+                    padding: 0;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    min-height: 100vh;
+                }
+
+                .container {
+                    width: 80%;
+                    background: #ffffff;
+                    padding: 20px;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                }
+
+                .title {
+                    text-align: center;
+                    font-size: 24px;
+                    margin-bottom: 20px;
+                }
+
+                .group-list {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 20px;
+                    justify-content: center;
+                }
+
+                .group-card {
+                    width: calc(20% - 20px);
+                    min-width: 300px;
+                    max-width: 400px;
+                    background: #ffffff;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    padding: 20px;
+                    text-align: center;
+                    margin: 10px;
+                }
+
+                .group-name {
+                    font-size: 20px;
+                    margin: 0;
+                }
+
+                .group-leader {
+                    font-size: 16px;
+                    color: #666;
+                    margin: 5px 0;
+                    font-style: italic;
+                }
+
+                .stars {
+                    font-size: 18px;
+                    color: gold;
+                    margin-bottom: 10px;
+                }
+
+                .evaluation-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 5px;
+                    margin-top: 10px;
+                }
+
+                .evaluation-point {
+                    padding: 10px 15px;
+                    background: #007bff;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    font-size: 14px;
+                    cursor: pointer;
+                    transition: background 0.3s ease;
+                }
+
+                .evaluation-point:hover {
+                    background: #0056b3;
+                }
+
+                .fullscreen-modal {
+                    display: none;
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.8);
+                    z-index: 999;
+                    justify-content: center;
+                    align-items: center;
+                }
+
+                .modal-content {
+                    background: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    text-align: center;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+                    width: 80%;
+                    max-width: 400px;
+                }
+
+                .modal-title {
+                    font-size: 20px;
+                    margin: 0;
+                }
+
+                .modal-message {
+                    font-size: 16px;
+                    margin: 10px 0;
+                }
+
+                .modal-close {
+                    padding: 10px 20px;
+                    background: #dc3545;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    font-size: 14px;
+                    cursor: pointer;
+                    transition: background 0.3s ease;
+                }
+
+                .modal-close:hover {
+                    background: #c82333;
+                }
+
+            `;
+            document.head.appendChild(style);
+            
+            // 加载小组数据
+            loadGroupsData();
+        }
+
+        // 加载小组数据函数
+        function loadGroupsData() {
+            // AJAX请求获取小组数据
+            $.ajax({
+                url: '/groups',
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer '+ localStorage.getItem('jwt_token')
+                },
+                async: false,
+                data: JSON.stringify({
+                    request_type: 'get_all',
+                    request_data: {}
+                }),
+                contentType: 'application/json',
+                success: function(response) {
+                    if (response.status === 200) {
+                        renderGroups(response.data);
+                    }
+                }
+            });
+        }
+
+        // 渲染小组列表函数
+        function renderGroups(groups) {
+            const groupList = document.querySelector('.group-list');
+            groupList.innerHTML = '';
+
+            let html = '';
+            
+            groups.forEach(group => {
+                let groupTotalScore = 0;
+                let course_task_id = localStorage.getItem('course_task_id');
+
+                // 通过ajax获取小组评分数据，get_group_total_score_task接口获取小组评分数据
+                $.ajax({
+                    url: '/get_group_total_score_task',
+                    type: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer '+ localStorage.getItem('jwt_token')
+                    },
+                    async: false,
+                    data: JSON.stringify({
+                        task_id: course_task_id,
+                        scored_group_id: group.id
+                    }),
+                    contentType: 'application/json',
+                    success: function(response) {
+                        if (response.status === 200) {
+                            groupTotalScore = response.data.total_score;
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error:', xhr.responseJSON?.message || xhr.statusText);
+                    }
+                })
+
+                html += `
+                    <div class="group-card">
+                        <h2 class="group-name">${group.group_name}</h2>
+                        <p class="group-leader">组长：${group.leader_name}</p>
+                        <div class="stars">CHZT_TOTAL_SCORE_REF ★</div>
+                        <div class="evaluation-grid">`;
+                    // 通过ajax获取评分点数据，get_course_task_criteria接口获取评分点数据
+                    $.ajax({
+                            url: '/get_course_task_criteria',
+                            type: 'POST',
+                            headers: {
+                                'Authorization': 'Bearer '+ localStorage.getItem('jwt_token')
+                            },
+                            data: JSON.stringify({
+                                course_task_id: localStorage.getItem('course_task_id')
+                            }),
+                            async: false,
+                            contentType: 'application/json',
+                            success: function(response) {
+                                if (response.status === 200) {
+                                    response.data.criterias.forEach(criteria => {
+                                        html += `<button class="evaluation-point" data-criteria-id="${criteria.id}">${criteria.criteria_name}</button>`;
+                                    });
+                                }
+                            },
+                            error: function(xhr) {
+                                console.error('Error:', xhr.responseJSON?.message || xhr.statusText);
+                            }
+                    })
+                html += `</div></div>`;
+                // 修改html中的小组总分
+                html = html.replace(`CHZT_TOTAL_SCORE_REF ★`, `${groupTotalScore} ★`);
+            });
+            groupList.innerHTML += html;
+            
+            // 添加评分点点击事件
+            document.querySelectorAll('.evaluation-point').forEach(button => {
+                button.addEventListener('click', () => {
+                    showModal(`你是一个${button.textContent}的孩子！`);
+                });
+            });
+        }
+
+        // 显示模态框函数
+        function showModal(message) {
+            const modal = document.getElementById('fullscreenModal');
+            const modalMessage = document.getElementById('modalMessage');
+            modal.style.display = 'flex';
+            modalMessage.textContent = message;
+        }
+
+        // 关闭模态框函数
+        function closeModal() {
+            document.getElementById('fullscreenModal').style.display = 'none';
         }
 
         // 添加小组卡片点击事件
@@ -586,6 +1156,7 @@
             });
             
         });
+
     </script>
 </body>
 </html>

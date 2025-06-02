@@ -10,15 +10,23 @@
     <link href="css/summernote-bs5.min.css" rel="stylesheet">
     <script src="script/bootstrap.bundle.min.js"></script>
     <script src="script/jquery.min.js"></script>
+    <script src="js/chart.js"></script>
     <script src="script/summernote-bs5.min.js"></script>
     <script src="script/summernote-zh-CN.js"></script>
     <link href="./css/star-rating.min.css" media="all" rel="stylesheet" type="text/css" />
+    <!-- 引入Chart.js的datalabels插件 -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script> -->
     <!-- 默认主题 -->
     <link href="./css/theme.css" media="all" rel="stylesheet" type="text/css" />
     <script src="./js/star-rating.min.js" type="text/javascript"></script>
     <!-- 默认主题 JS -->
     <script src="./js/theme.js"></script>
     <style>
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
         /* 自定义样式 */
         #self-rating-items .fw-bold {
             font-size: 1.1rem;  /* 增大字体 */
@@ -130,7 +138,7 @@
                     document.getElementById('homework-content-area').style.display = 'none';
                     break;
                 case 'view-eval-page':
-
+                    loadViewEvaluationContent();
                     break;
             }
         }
@@ -167,6 +175,124 @@
             })
         }
 
+        function loadViewEvaluationContent() {
+            const currentGroupId = varGroupId; // 替换为当前用户的group_id
+            const courseTaskId = localStorage.getItem('course_task_id'); // 替换为当前课程的task_id
+            let criterias = null;
+            
+            // 发送AJAX请求获取当前任务点的评分点，get_course_task_criteria接口
+            $.ajax({
+                url: '/get_course_task_criteria',
+                type: 'POST',
+                contentType: 'application/json',
+                async: false, // 设置为阻塞式请求
+                data: JSON.stringify({
+                    course_task_id: courseTaskId
+                }),
+                success: function(response) {
+                    if (response.status === 200 && response.data) {
+                        criterias = response.data.criterias;
+                        // 发送AJAX请求获取所有小组数据
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('获取评分点请求出错:', error);
+                }
+            });
+
+            // 数据列表
+            let dataList = [];
+
+            if (criterias) {
+                // 对于每一个评分点，发送AJAX请求获取该评分点的评分项
+                criterias.forEach(criteria => {
+                    let tmp_total_score = 0;
+                    // 发送AJAX请求获取所有小组数据，通过get_group_total_score_task_student接口
+                    $.ajax({
+                        url: '/get_group_total_score_task_criteria_student',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        headers: {
+                            'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
+                        },
+                        async: false, // 设置为阻塞式请求
+                        data: JSON.stringify({
+                            scored_group_id: currentGroupId,  // 需要替换为实际的小组ID
+                            criteria_id: criteria['id']           // 需要替换为实际的任务ID
+                        }),
+                        success: function(response) {
+                            if (response.status === 200) {
+                                // 处理获取到的总分数据
+                                console.log('小组总分:', response.data.total_score);
+                                tmp_total_score = response.data.total_score;
+                            } else {
+                                console.error('获取小组总分失败:', response.message);
+                                tmp_total_score = 0;
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('AJAX请求出错:', error);
+                        }
+                    })
+
+                    dataList.push({
+                        criteria_name: criteria['criteria_name'],
+                        score: tmp_total_score,
+                    });
+                })
+
+            }
+            const chart_labels = dataList.map(item => item.criteria_name);
+            const chart_data = dataList.map(item => item.score);
+            console.log(chart_labels);
+            console.log(chart_data);
+            // 绘制图表
+            const ctx = document.getElementById('evalBarChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chart_labels,
+                    datasets: [{
+                        label: '小组总分',
+                        data: chart_data,
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    plugins: {
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            formatter: function(value) {
+                                return value;
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 30,
+                            ticks: {
+                                stepSize: 1  // 设置y轴步长为1
+                            },
+                            title: {
+                                display: true,
+                                text: '得分'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: '评分点'
+                            }
+                        }
+                    }
+                }
+            })
+        }
+        
         /**
          * 清除所有active-item类
          */
@@ -678,7 +804,6 @@
             });
         });
 
-
         // 页面加载完成后执行
         $(document).ready(function() {
             // 从URL中获取groupId
@@ -991,7 +1116,7 @@
     <div class="container-fluid content-area">
         <!-- 作业提交页面 -->
         <div id="submit-page" class="page active">
-            <div class="card h-100">
+            <div class="card">
                 <div class="card-body">
                     <div id="summernote"></div>
                 </div>
@@ -1071,7 +1196,10 @@
         <div id="view-eval-page" class="page">
             <div class="card h-100">
                 <div class="card-body">
-                    <h4 class="text-muted">评价查看功能开发中</h4>
+                    <h4 class="card-title">小组评价总得分</h4>
+                    <div class="chart-container">
+                        <canvas id="evalBarChart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
