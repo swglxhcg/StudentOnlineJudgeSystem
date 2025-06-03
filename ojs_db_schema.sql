@@ -97,3 +97,6 @@ CREATE TABLE IF NOT EXISTS runtime_variables (
     variable_value TEXT COMMENT '变量值',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
 ) COMMENT '运行时变量表';
+
+-- 添加管理员用户
+INSERT INTO users (username, password, user_type) VALUES ('admin', 'b80aff3d57efbee868148955a524951c1bc56956b3bbb6a83c66b57149055420', 'admin') ON DUPLICATE KEY UPDATE password = 'b80aff3d57efbee868148955a524951c1bc56956b3bbb6a83c66b57149055420';
