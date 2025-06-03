@@ -25,11 +25,24 @@ app.config['JWT_ALGORITHM'] = 'HS256'
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=90)  # 刷新令牌有效期
 jwt = JWTManager(app)
 
+# 从ojs_root_key.txt读取密钥
+def load_db_key():
+    try:
+        with open('ojs_root_key.txt', 'r') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        logger.error("ojs_root_key.txt 文件未找到")
+        return None
+
+# 加载密钥
+db_key = load_db_key()
+
 # 数据库连接配置
 db_config = {
-    'host': 'localhost',
+    'host': 'sh-cynosdbmysql-grp-pnoql0j8.sql.tencentcdb.com',
+    'port': 28302,
     'user': 'ojs_root',
-    'password': '123456',
+    'password': db_key,
     'database': 'ojs_db',
     'charset': 'utf8mb4'
 }
@@ -394,8 +407,8 @@ def login():
         # 生成JWT令牌
         identity = {'id': user['id'], 'type': user['user_type']}
         identity_str = json.dumps(identity, separators=(',', ':'))
-        access_token = create_access_token(identity=identity_str, expires_delta=timedelta(days=2))
-        logger.info(f"登录成功:  \[{user['user_type']}\] 用户 {username} (ID: {user['id']}) 已登录")
+        access_token = create_access_token(identity=identity_str, expires_delta=timedelta(days=365))
+        logger.info(f"登录成功:  [{user['user_type']}] 用户 {username} (ID: {user['id']}) 已登录")
         return jsonify({
             'status': 200,
             'message': {
@@ -2616,4 +2629,13 @@ def classing():
 
 
 if __name__ == '__main__':
-    app.run(debug=True,port=5010)
+    # 测试mysql连接
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    cursor.execute("SELECT 1")
+    result = cursor.fetchone()
+    if result:
+        logger.info("数据库连接成功")
+    else:
+        logger.error("数据库连接失败")
+    app.run(debug=False,port=5010)
