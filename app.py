@@ -2357,7 +2357,7 @@ def dashboard():
         template_mapping = {
             'groups_manage': {
                 'show': True,
-                'show_text': '群组管理',
+                'show_text': '小组管理',
                 'template_file': 'www-html/templates/groups-manage-container.template',
                 'placeholder': '<!--<|CHZT_REF_CONTENT|>-->'
             },
